@@ -84,7 +84,6 @@ document.addEventListener("DOMContentLoaded", () => {
         document.addEventListener("contextmenu", (e) => { if (e.ctrlKey) e.preventDefault(); });
 
         viewport.addEventListener("mousedown", (e) => {
-            // Box Select (Ctrl + Right Click)
             if (e.ctrlKey && e.button === 2) {
                 e.preventDefault();
                 isBoxSelecting = true;
@@ -98,7 +97,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 return;
             }
 
-            // Pan
             if (e.button === 0 && (e.target === viewport || e.target === contentLayer)) {
                 state.isPanning = true;
                 state.startPanX = e.clientX - state.panX;
@@ -208,7 +206,8 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // --- Save/Load ---
+    // --- Save/Load/Export ---
+
     function getDiagramJSON() {
         const data = { elements: [], lines: [] };
         document.querySelectorAll(".element").forEach(el => {
@@ -225,11 +224,16 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         });
         document.querySelectorAll(".line").forEach(l => {
+            let type = "";
+            if (l.classList.contains("double")) type = "double";
+            if (l.classList.contains("dashed")) type = "dashed";
+            
             data.lines.push({
                 startId: l.dataset.startId,
                 endId: l.dataset.endId,
                 cardStart: l.querySelector(".start").innerText,
-                cardEnd: l.querySelector(".end").innerText
+                cardEnd: l.querySelector(".end").innerText,
+                lineType: type
             });
         });
         return JSON.stringify(data);
@@ -276,15 +280,38 @@ document.addEventListener("DOMContentLoaded", () => {
             try {
                 const data = JSON.parse(e.target.result);
                 clearCanvas();
-                data.elements.forEach(d => createElement(d.type, d));
-                setTimeout(() => {
-                    data.lines.forEach(l => {
-                        const s = document.getElementById(l.startId);
-                        const end = document.getElementById(l.endId);
-                        if (s && end) createLine(s, end, l);
-                    });
-                }, 0);
-            } catch (err) { console.error(err); }
+                
+                // 1. Create Elements
+                let maxId = 0;
+                data.elements.forEach(d => {
+                    createElement(d.type, d);
+                    // Sync ID counter
+                    const parts = d.id.split('-');
+                    const idNum = parseInt(parts[parts.length - 1]);
+                    if (!isNaN(idNum) && idNum > maxId) maxId = idNum;
+                });
+                state.elementCounter = maxId + 1;
+
+                // 2. Create Lines (Wait longer for DOM layout)
+                // Using requestAnimationFrame + 200ms timeout ensures browser has painted
+                requestAnimationFrame(() => {
+                    setTimeout(() => {
+                        data.lines.forEach(l => {
+                            const s = document.getElementById(l.startId);
+                            const end = document.getElementById(l.endId);
+                            if (s && end) {
+                                createLine(s, end, l);
+                            } else {
+                                console.warn(`Could not connect line: ${l.startId} to ${l.endId}`);
+                            }
+                        });
+                    }, 200);
+                });
+
+            } catch (err) { 
+                console.error(err);
+                alert("Error loading file. Please check the console.");
+            }
         };
         reader.readAsText(file);
     }
