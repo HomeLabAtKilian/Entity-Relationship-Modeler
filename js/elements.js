@@ -73,7 +73,7 @@ export function createElement(type, savedData = null) {
         element.style.top = `${snapY}px`;
     }
 
-    // --- CLICK LISTENER (Selection Logic) ---
+    // --- CLICK LISTENER ---
     element.addEventListener("click", (e) => {
         e.stopPropagation();
         if (state.deleteMode) {
@@ -85,16 +85,13 @@ export function createElement(type, savedData = null) {
             return;
         }
 
-        // SELECTION LOGIC
         if (e.ctrlKey) {
-            // FIX: If we just added it in mousedown, don't toggle it off immediately
             if (element.dataset.justSelected === "true") {
-                delete element.dataset.justSelected; // Clear flag, keep selected
+                delete element.dataset.justSelected;
             } else {
-                toggleSelection(element, true); // Toggle normally
+                toggleSelection(element, true);
             }
         } else {
-            // Normal click: Select only this (unless we just dragged)
             if (element.dataset.justDragged === "true") {
                 delete element.dataset.justDragged;
             } else {
@@ -103,17 +100,15 @@ export function createElement(type, savedData = null) {
         }
     });
 
-    // --- MOUSEDOWN LISTENER (Drag & Pre-Selection) ---
+    // --- MOUSEDOWN LISTENER ---
     element.addEventListener("mousedown", (e) => {
         if (state.deleteMode || state.lineMode) return;
         if (e.button !== 0) return;
         e.stopPropagation();
 
-        // 1. Handle Selection BEFORE Drag
         if (e.ctrlKey) {
             if (!state.selectedElements.has(element)) {
                 addToSelection(element);
-                // Mark that we just selected it, so 'click' doesn't deselect it
                 element.dataset.justSelected = "true";
             }
         } else {
@@ -122,21 +117,22 @@ export function createElement(type, savedData = null) {
                 addToSelection(element);
             }
         }
-
         initDrag(e);
     });
 
+    // --- FIX 2: SELECT ALL TEXT ON DOUBLE CLICK ---
     element.addEventListener("dblclick", (e) => {
         if (state.deleteMode || state.lineMode) return;
         e.stopPropagation();
         text.focus();
+        // Select all text inside the element
+        document.execCommand('selectAll', false, null);
     });
 }
 
 function initDrag(e) {
     const startMouseX = e.clientX;
     const startMouseY = e.clientY;
-    let hasMoved = false;
     
     const initialPositions = new Map();
     state.selectedElements.forEach(el => {
@@ -144,7 +140,6 @@ function initDrag(e) {
     });
 
     function onMouseMove(ev) {
-        hasMoved = true;
         const dx = (ev.clientX - startMouseX) / state.scale;
         const dy = (ev.clientY - startMouseY) / state.scale;
 
@@ -157,8 +152,6 @@ function initDrag(e) {
             el.style.left = `${snappedLeft}px`;
             el.style.top = `${snappedTop}px`;
             updateLines(el);
-            
-            // Mark as dragged so click doesn't reset selection
             el.dataset.justDragged = "true";
         });
     }

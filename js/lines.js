@@ -30,10 +30,38 @@ export function createLine(startEl, endEl, savedData) {
         line.classList.add(savedData.lineType);
     }
 
+    // Click to cycle line types
+    line.addEventListener("click", (e) => {
+        if (state.deleteMode) {
+            line.remove();
+            return;
+        }
+        e.stopPropagation();
+        
+        if (line.classList.contains("double")) {
+            line.classList.remove("double");
+            line.classList.add("dashed");
+        } else if (line.classList.contains("dashed")) {
+            line.classList.remove("dashed");
+        } else {
+            line.classList.add("double");
+        }
+    });
+
     const startCard = createCardSpan(savedData ? savedData.cardStart : "");
     startCard.classList.add("start");
     const endCard = createCardSpan(savedData ? savedData.cardEnd : "");
     endCard.classList.add("end");
+
+    // --- FIX: HIDE CARDINALITIES FOR ATTRIBUTES ---
+    const type1 = startEl.dataset.type;
+    const type2 = endEl.dataset.type;
+    const isAttributeConnection = type1.startsWith('attribute') || type2.startsWith('attribute') || type1 === 'label' || type2 === 'label';
+
+    if (isAttributeConnection) {
+        startCard.style.display = 'none';
+        endCard.style.display = 'none';
+    }
 
     line.appendChild(startCard);
     line.appendChild(endCard);
@@ -51,13 +79,11 @@ function createCardSpan(text) {
     const span = document.createElement("span");
     span.className = "cardinality";
     span.innerText = text;
-    span.contentEditable = false; // Disable typing
-    span.style.cursor = "pointer"; // Make it look clickable
+    span.contentEditable = false; 
+    span.style.cursor = "pointer"; 
     
-    // Prevent drag propagation
     span.addEventListener("mousedown", (e) => e.stopPropagation());
 
-    // CLICK TO CYCLE LOGIC
     span.addEventListener("click", (e) => {
         if (state.deleteMode) return;
         e.stopPropagation();
@@ -66,47 +92,46 @@ function createCardSpan(text) {
         if (current === "") span.innerText = "1";
         else if (current === "1") span.innerText = "N";
         else if (current === "N") span.innerText = "M";
-        else span.innerText = ""; // Reset to empty
+        else span.innerText = ""; 
     });
 
     return span;
 }
 
 export function positionLine(line, startEl, endEl) {
-    // 1. Get Centers
     const x1 = parseFloat(startEl.style.left) + startEl.offsetWidth / 2;
     const y1 = parseFloat(startEl.style.top) + startEl.offsetHeight / 2;
     const x2 = parseFloat(endEl.style.left) + endEl.offsetWidth / 2;
     const y2 = parseFloat(endEl.style.top) + endEl.offsetHeight / 2;
 
-    // 2. Calculate Line Geometry
     const dx = x2 - x1;
     const dy = y2 - y1;
     const length = Math.hypot(dx, dy);
-    const angle = Math.atan2(dy, dx); // Radians
+    const angle = Math.atan2(dy, dx); 
 
-    // 3. Position the Main Line
     line.style.width = `${length}px`;
     line.style.left = `${x1}px`;
     line.style.top = `${y1}px`;
     line.style.transform = `rotate(${angle * 180 / Math.PI}deg)`;
 
-    // 4. Calculate Label Positions (The "Gap" Logic)
     const startCard = line.querySelector(".start");
     const endCard = line.querySelector(".end");
     
-    const startOffset = getDistanceToEdge(startEl.offsetWidth, startEl.offsetHeight, angle);
-    const endOffset = getDistanceToEdge(endEl.offsetWidth, endEl.offsetHeight, angle + Math.PI); 
+    // Only calculate if visible
+    if (startCard.style.display !== 'none') {
+        const startOffset = getDistanceToEdge(startEl.offsetWidth, startEl.offsetHeight, angle);
+        const endOffset = getDistanceToEdge(endEl.offsetWidth, endEl.offsetHeight, angle + Math.PI); 
 
-    const padding = 25; 
+        const padding = 25; 
 
-    startCard.style.left = `${startOffset + padding}px`;
-    startCard.style.top = `-12px`; 
-    startCard.style.transform = `rotate(${-angle * 180 / Math.PI}deg)`; 
+        startCard.style.left = `${startOffset + padding}px`;
+        startCard.style.top = `-12px`; 
+        startCard.style.transform = `rotate(${-angle * 180 / Math.PI}deg)`; 
 
-    endCard.style.left = `${length - (endOffset + padding)}px`;
-    endCard.style.top = `-12px`;
-    endCard.style.transform = `rotate(${-angle * 180 / Math.PI}deg)`;
+        endCard.style.left = `${length - (endOffset + padding)}px`;
+        endCard.style.top = `-12px`;
+        endCard.style.transform = `rotate(${-angle * 180 / Math.PI}deg)`;
+    }
 }
 
 function getDistanceToEdge(width, height, angle) {

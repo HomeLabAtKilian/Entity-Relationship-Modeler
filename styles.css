@@ -113,11 +113,20 @@ button.active {
 }
 
 .element-text {
-    margin: 0; padding: 5px;
-    color: white; font-weight: 500; font-size: 14px;
-    pointer-events: none; outline: none;
-    width: 100%; line-height: 1.2; white-space: pre-wrap;
+    margin: 0; 
+    padding: 5px;
+    color: white; 
+    font-weight: 500; 
+    font-size: 14px;
+    pointer-events: none; 
+    outline: none;
+    width: 100%; 
+    line-height: 1.2; 
+    white-space: pre-wrap;
     transition: opacity 0.2s ease;
+    
+    /* FIX 1: Force Center Alignment */
+    text-align: center; 
 }
 
 .element.selected { border: 2px solid white; box-shadow: 0 0 15px rgba(0, 144, 255, 0.6); }
