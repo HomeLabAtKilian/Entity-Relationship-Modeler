@@ -21,7 +21,6 @@ export function createElement(type, savedData = null) {
     text.setAttribute("spellcheck", "false");
     text.addEventListener("paste", sanitizePaste);
 
-    // Styling
     switch (type) {
         case "entity":
             element.style.backgroundColor = state.colors.entity;
@@ -56,7 +55,6 @@ export function createElement(type, savedData = null) {
     element.appendChild(text);
     contentLayer.appendChild(element);
 
-    // Positioning
     if (savedData) {
         element.style.left = savedData.left;
         element.style.top = savedData.top;
@@ -73,17 +71,10 @@ export function createElement(type, savedData = null) {
         element.style.top = `${snapY}px`;
     }
 
-    // --- CLICK LISTENER ---
     element.addEventListener("click", (e) => {
         e.stopPropagation();
-        if (state.deleteMode) {
-            deleteElement(element);
-            return;
-        }
-        if (state.lineMode) {
-            handleLineClick(element);
-            return;
-        }
+        if (state.deleteMode) { deleteElement(element); return; }
+        if (state.lineMode) { handleLineClick(element); return; }
 
         if (e.ctrlKey) {
             if (element.dataset.justSelected === "true") {
@@ -100,7 +91,6 @@ export function createElement(type, savedData = null) {
         }
     });
 
-    // --- MOUSEDOWN LISTENER ---
     element.addEventListener("mousedown", (e) => {
         if (state.deleteMode || state.lineMode) return;
         if (e.button !== 0) return;
@@ -120,12 +110,10 @@ export function createElement(type, savedData = null) {
         initDrag(e);
     });
 
-    // --- FIX 2: SELECT ALL TEXT ON DOUBLE CLICK ---
     element.addEventListener("dblclick", (e) => {
         if (state.deleteMode || state.lineMode) return;
         e.stopPropagation();
         text.focus();
-        // Select all text inside the element
         document.execCommand('selectAll', false, null);
     });
 }
@@ -133,7 +121,6 @@ export function createElement(type, savedData = null) {
 function initDrag(e) {
     const startMouseX = e.clientX;
     const startMouseY = e.clientY;
-    
     const initialPositions = new Map();
     state.selectedElements.forEach(el => {
         initialPositions.set(el.id, { left: parseFloat(el.style.left) || 0, top: parseFloat(el.style.top) || 0 });
@@ -142,7 +129,6 @@ function initDrag(e) {
     function onMouseMove(ev) {
         const dx = (ev.clientX - startMouseX) / state.scale;
         const dy = (ev.clientY - startMouseY) / state.scale;
-
         state.selectedElements.forEach(el => {
             const init = initialPositions.get(el.id);
             const rawLeft = init.left + dx;
@@ -160,7 +146,6 @@ function initDrag(e) {
         window.removeEventListener("mousemove", onMouseMove);
         window.removeEventListener("mouseup", onMouseUp);
     }
-
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
 }
@@ -174,22 +159,11 @@ export function deleteElement(el) {
 export function toggleSelection(el, multi) {
     if (!multi) clearSelection();
     if (state.selectedElements.has(el)) {
-        if (multi) { 
-            el.classList.remove("selected"); 
-            state.selectedElements.delete(el); 
-        }
+        if (multi) { el.classList.remove("selected"); state.selectedElements.delete(el); }
     } else {
-        el.classList.add("selected"); 
-        state.selectedElements.add(el);
+        el.classList.add("selected"); state.selectedElements.add(el);
     }
 }
 
-export function addToSelection(el) { 
-    el.classList.add("selected"); 
-    state.selectedElements.add(el); 
-}
-
-export function clearSelection() { 
-    state.selectedElements.forEach(el => el.classList.remove("selected")); 
-    state.selectedElements.clear(); 
-}
+export function addToSelection(el) { el.classList.add("selected"); state.selectedElements.add(el); }
+export function clearSelection() { state.selectedElements.forEach(el => el.classList.remove("selected")); state.selectedElements.clear(); }

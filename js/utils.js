@@ -1,11 +1,8 @@
 export function sanitizePaste(e) {
     e.preventDefault();
-    // 1. Check for files (Images)
     if (e.clipboardData.files && e.clipboardData.files.length > 0) {
-        // Image handling logic could go here if needed
         return; 
     }
-    // 2. Handle Text (Strip HTML)
     const text = e.clipboardData.getData('text/plain');
     document.execCommand('insertText', false, text);
 }

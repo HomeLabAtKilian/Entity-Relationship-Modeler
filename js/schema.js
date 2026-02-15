@@ -5,6 +5,7 @@ export function generateSchema() {
     const intermediateTables = [];
     const entities = document.querySelectorAll('.element[data-type="entity"]');
     const relationships = document.querySelectorAll('.element[data-type="relationship"]');
+    const isaTriangles = document.querySelectorAll('.element[data-type="isa"]');
 
     // --- PASS 1: Build Base Entities ---
     entities.forEach(entity => {
@@ -17,40 +18,58 @@ export function generateSchema() {
             isWeak: entity.classList.contains('weak')
         });
         
-        // Handle Multivalued Attributes (Create separate tables)
         data.multiAttributes.forEach(multi => {
             intermediateTables.push({
                 name: `${data.name}_${multi}`,
-                pks: [...data.pks, multi], // Composite PK
+                pks: [...data.pks, multi],
                 attributes: [],
                 fks: data.pks.map(pk => ({ name: pk, source: data.name }))
             });
         });
     });
 
-    // --- PASS 1.5: Handle Weak Entities (Find Owner) ---
+    // --- PASS 1.5: Handle Weak Entities ---
     schemaMap.forEach((table, id) => {
         if (table.isWeak) {
-            // Find identifying relationship
             const entityEl = document.getElementById(id);
             if (entityEl && entityEl.lines) {
                 entityEl.lines.forEach(line => {
                     const otherEl = getOtherEnd(line, entityEl);
-                    // If connected to a relationship that is also weak (identifying)
                     if (otherEl.dataset.type === 'relationship' && otherEl.classList.contains('weak')) {
-                        // Find the strong entity on the other side of this relationship
                         const relConnections = getConnectedEntities(otherEl);
                         relConnections.forEach(conn => {
                             if (conn.entity.id !== id) {
                                 const ownerTable = schemaMap.get(conn.entity.id);
                                 if (ownerTable) {
-                                    // Pull Owner PKs into Weak Entity as PK + FK
                                     ownerTable.pks.forEach(pk => {
-                                        table.pks.unshift(pk); // Add to start of PK list
+                                        table.pks.unshift(pk);
                                         table.fks.push({ name: pk, source: ownerTable.name });
                                     });
                                 }
                             }
+                        });
+                    }
+                });
+            }
+        }
+    });
+
+    // --- PASS 1.8: Handle ISA ---
+    isaTriangles.forEach(isa => {
+        const connected = getConnectedEntities(isa);
+        if (connected.length >= 2) {
+            connected.sort((a, b) => parseFloat(a.entity.style.top) - parseFloat(b.entity.style.top));
+            const superEntityEl = connected[0].entity;
+            const subEntitiesData = connected.slice(1);
+            const superTable = schemaMap.get(superEntityEl.id);
+
+            if (superTable) {
+                subEntitiesData.forEach(conn => {
+                    const subTable = schemaMap.get(conn.entity.id);
+                    if (subTable) {
+                        superTable.pks.forEach(pk => {
+                            if (!subTable.pks.includes(pk)) subTable.pks.unshift(pk);
+                            subTable.fks.push({ name: pk, source: superTable.name });
                         });
                     }
                 });
@@ -64,14 +83,8 @@ export function generateSchema() {
         const connections = getConnectedEntities(rel);
         const relAttributes = getConnectedAttributes(rel);
 
-        // TERNARY (or N-ary) Relationship -> Always a new table
         if (connections.length > 2) {
-            const newTable = {
-                name: relName,
-                pks: [],
-                attributes: relAttributes,
-                fks: []
-            };
+            const newTable = { name: relName, pks: [], attributes: relAttributes, fks: [] };
             connections.forEach(conn => {
                 const ent = schemaMap.get(conn.entity.id);
                 if (ent) {
@@ -83,7 +96,6 @@ export function generateSchema() {
             });
             intermediateTables.push(newTable);
         }
-        // BINARY Relationship
         else if (connections.length === 2) {
             const [c1, c2] = connections;
             const ent1 = schemaMap.get(c1.entity.id);
@@ -93,36 +105,19 @@ export function generateSchema() {
 
             const card1 = c1.cardinality.toUpperCase();
             const card2 = c2.cardinality.toUpperCase();
-            
-            // Recursive Relationship Check
             const isRecursive = (c1.entity.id === c2.entity.id);
 
-            // N:M -> New Table
             if ((card1 === 'N' || card1 === 'M') && (card2 === 'N' || card2 === 'M')) {
-                const newTable = {
-                    name: relName,
-                    pks: [],
-                    attributes: relAttributes,
-                    fks: []
-                };
-                
-                // Ent1 Keys
-                ent1.pks.forEach(pk => {
-                    newTable.pks.push(pk);
-                    newTable.fks.push({ name: pk, source: ent1.name });
-                });
-                
-                // Ent2 Keys (Handle Recursive Renaming)
+                const newTable = { name: relName, pks: [], attributes: relAttributes, fks: [] };
+                ent1.pks.forEach(pk => { newTable.pks.push(pk); newTable.fks.push({ name: pk, source: ent1.name }); });
                 ent2.pks.forEach(pk => {
                     let keyName = pk;
-                    if (isRecursive) keyName = `other_${pk}`; // Simple renaming for recursive
+                    if (isRecursive) keyName = `other_${pk}`;
                     newTable.pks.push(keyName);
                     newTable.fks.push({ name: keyName, source: ent2.name });
                 });
-
                 intermediateTables.push(newTable);
             }
-            // 1:N (Ent1 is N)
             else if ((card1 === 'N' || card1 === 'M') && (card2 === '1' || card2 === '')) {
                 ent2.pks.forEach(pk => {
                     let keyName = pk;
@@ -130,7 +125,6 @@ export function generateSchema() {
                     ent1.fks.push({ name: keyName, source: ent2.name });
                 });
             }
-            // 1:N (Ent2 is N)
             else if ((card1 === '1' || card1 === '') && (card2 === 'N' || card2 === 'M')) {
                 ent1.pks.forEach(pk => {
                     let keyName = pk;
@@ -138,14 +132,12 @@ export function generateSchema() {
                     ent2.fks.push({ name: keyName, source: ent1.name });
                 });
             }
-            // 1:1
             else {
                 ent2.pks.forEach(pk => ent1.fks.push({ name: pk, source: ent2.name }));
             }
         }
     });
 
-    // --- PASS 3: Render HTML ---
     let html = "<b>Relationsmodell:</b><br><br>";
     schemaMap.forEach(table => html += renderTableString(table));
     if (intermediateTables.length > 0) {
@@ -154,12 +146,8 @@ export function generateSchema() {
     }
 
     createElement('schema', { text: html, width: "500px", height: "auto" });
-    
-    // Return data for SQL generator
     return { schemaMap, intermediateTables };
 }
-
-// --- Helpers ---
 
 function renderTableString(table) {
     let str = `<b>${table.name}</b> ( `;
@@ -183,29 +171,19 @@ function getEntityData(entity) {
     const attributes = [];
     const multiAttributes = [];
 
-    // Recursive function to handle Composite Attributes
     function traverseAttributes(el) {
         if (el.lines) {
             el.lines.forEach(line => {
                 const otherEl = getOtherEnd(line, el);
-                // Check if it's an attribute and NOT the one we came from (to avoid loops)
                 if (otherEl && otherEl.dataset.type.startsWith('attribute')) {
-                    // Check if this attribute has its OWN attributes (Composite Parent)
-                    // If it does, we ignore the parent name and recurse
                     const subAttributes = getConnectedAttributes(otherEl);
-                    
                     if (subAttributes.length > 0) {
-                        // It's a composite parent, recurse!
                         traverseAttributes(otherEl);
                     } else {
-                        // It's a leaf attribute
                         const attrName = otherEl.innerText.trim();
-                        
-                        if (otherEl.dataset.type === 'attribute-multi') {
-                            multiAttributes.push(attrName);
-                        } else if (otherEl.dataset.type === 'attribute-derived') {
-                            // Ignore derived
-                        } else {
+                        if (otherEl.dataset.type === 'attribute-multi') multiAttributes.push(attrName);
+                        else if (otherEl.dataset.type === 'attribute-derived') {} 
+                        else {
                             if (otherEl.classList.contains('primary-key')) pks.push(attrName);
                             else attributes.push(attrName);
                         }
@@ -215,21 +193,16 @@ function getEntityData(entity) {
         }
     }
 
-    // Initial call from Entity
     if (entity.lines) {
         entity.lines.forEach(line => {
             const otherEl = getOtherEnd(line, entity);
             if (otherEl && otherEl.dataset.type.startsWith('attribute')) {
-                 // Check if composite parent
                  const subs = getConnectedAttributes(otherEl);
-                 if (subs.length > 0) {
-                     // Recurse down composite
-                     traverseAttributes(otherEl);
-                 } else {
-                     // Direct attribute
+                 if (subs.length > 0) traverseAttributes(otherEl);
+                 else {
                      const attrName = otherEl.innerText.trim();
                      if (otherEl.dataset.type === 'attribute-multi') multiAttributes.push(attrName);
-                     else if (otherEl.dataset.type === 'attribute-derived') {} // Ignore
+                     else if (otherEl.dataset.type === 'attribute-derived') {} 
                      else {
                          if (otherEl.classList.contains('primary-key')) pks.push(attrName);
                          else attributes.push(attrName);
@@ -238,7 +211,6 @@ function getEntityData(entity) {
             }
         });
     }
-
     return { name, pks, attributes, multiAttributes };
 }
 
@@ -247,26 +219,20 @@ function getConnectedAttributes(element) {
     if (element.lines) {
         element.lines.forEach(line => {
             const otherEl = getOtherEnd(line, element);
-            // Only count if it's an attribute and "downstream" (not the entity we came from)
-            if (otherEl && otherEl.dataset.type.startsWith('attribute')) {
-                // Simple check: is it further away from the entity? 
-                // For now, just return all connected attributes. 
-                // In a perfect graph, attributes only connect to 1 thing.
-                attributes.push(otherEl);
-            }
+            if (otherEl && otherEl.dataset.type.startsWith('attribute')) attributes.push(otherEl);
         });
     }
     return attributes;
 }
 
-function getConnectedEntities(relationship) {
+function getConnectedEntities(element) {
     const connections = [];
-    if (relationship.lines) {
-        relationship.lines.forEach(line => {
-            const otherEl = getOtherEnd(line, relationship);
+    if (element.lines) {
+        element.lines.forEach(line => {
+            const otherEl = getOtherEnd(line, element);
             if (otherEl && otherEl.dataset.type === 'entity') {
                 let card = "";
-                if (line.dataset.startId === relationship.id) card = line.querySelector('.end').innerText;
+                if (line.dataset.startId === element.id) card = line.querySelector('.end').innerText;
                 else card = line.querySelector('.start').innerText;
                 connections.push({ entity: otherEl, cardinality: card });
             }

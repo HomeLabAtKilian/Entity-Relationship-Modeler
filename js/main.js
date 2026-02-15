@@ -9,27 +9,22 @@ document.addEventListener("DOMContentLoaded", () => {
     const contentLayer = document.getElementById("content-layer");
     const selectionBox = document.getElementById("selection-box");
 
-    // --- Init ---
     setupMenuListeners();
     setupViewportControls();
     setupKeyboardShortcuts();
     updateTransform();
 
-    // --- Menu ---
     function setupMenuListeners() {
-        // Basic
         document.getElementById("add_entity").addEventListener("click", () => createElement("entity"));
         document.getElementById("add_attribute").addEventListener("click", () => createElement("attribute"));
         document.getElementById("add_relationship").addEventListener("click", () => createElement("relationship"));
         document.getElementById("add_label").addEventListener("click", () => createElement("label"));
         
-        // Advanced Features
         document.getElementById("add_attr_multi").addEventListener("click", () => createElement("attribute-multi"));
         document.getElementById("add_attr_derived").addEventListener("click", () => createElement("attribute-derived"));
         document.getElementById("add_isa").addEventListener("click", () => createElement("isa"));
         document.getElementById("generate_sql").addEventListener("click", generateSQL);
 
-        // Toggles
         document.getElementById("toggle_pk").addEventListener("click", () => {
             state.selectedElements.forEach(el => el.classList.toggle("primary-key"));
         });
@@ -37,7 +32,6 @@ document.addEventListener("DOMContentLoaded", () => {
             state.selectedElements.forEach(el => el.classList.toggle("weak"));
         });
 
-        // View Switcher
         document.getElementById("view_toggle").addEventListener("change", (e) => {
             state.viewMode = e.target.checked ? 'advanced' : 'basic';
             const advancedBtns = document.querySelectorAll('.advanced-feature');
@@ -48,7 +42,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
         document.getElementById("generate_schema").addEventListener("click", generateSchema);
 
-        // Tools
         const lineBtn = document.getElementById("add_line");
         lineBtn.addEventListener("click", () => {
             state.lineMode = !state.lineMode;
@@ -67,7 +60,6 @@ document.addEventListener("DOMContentLoaded", () => {
             updateButtonStates();
         });
 
-        // Zoom & File
         document.getElementById("zoom_in").addEventListener("click", () => zoomCenter(0.1));
         document.getElementById("zoom_out").addEventListener("click", () => zoomCenter(-0.1));
         document.getElementById("zoom_reset").addEventListener("click", () => { state.scale = 1; state.panX = 0; state.panY = 0; updateTransform(); });
@@ -94,7 +86,6 @@ document.addEventListener("DOMContentLoaded", () => {
         if (state.deleteMode) deleteBtn.classList.add("delete-active"); else deleteBtn.classList.remove("delete-active");
     }
 
-    // --- Viewport Controls ---
     function setupViewportControls() {
         let isBoxSelecting = false;
         let boxStartX = 0;
@@ -108,15 +99,12 @@ document.addEventListener("DOMContentLoaded", () => {
         });
 
         viewport.addEventListener("mousedown", (e) => {
-            // Box Select Trigger
             if ((e.ctrlKey && e.button === 2) || (e.shiftKey && e.button === 0)) {
                 e.preventDefault();
                 e.stopPropagation();
-                
                 isBoxSelecting = true;
                 boxStartX = e.clientX;
                 boxStartY = e.clientY;
-                
                 selectionBox.style.left = `${boxStartX}px`;
                 selectionBox.style.top = `${boxStartY}px`;
                 selectionBox.style.width = "0px";
@@ -125,13 +113,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 return;
             }
 
-            // Pan Trigger (Left Click on background)
             if (e.button === 0 && (e.target === viewport || e.target === contentLayer)) {
-                // --- NEW: Deselect if clicking background without modifiers ---
-                if (!e.ctrlKey && !e.shiftKey) {
-                    clearSelection();
-                }
-
+                if (!e.ctrlKey && !e.shiftKey) clearSelection();
                 state.isPanning = true;
                 state.startPanX = e.clientX - state.panX;
                 state.startPanY = e.clientY - state.panY;
@@ -144,19 +127,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 e.preventDefault();
                 const currentX = e.clientX;
                 const currentY = e.clientY;
-
                 const width = Math.abs(currentX - boxStartX);
                 const height = Math.abs(currentY - boxStartY);
                 const left = Math.min(currentX, boxStartX);
                 const top = Math.min(currentY, boxStartY);
-
                 selectionBox.style.width = `${width}px`;
                 selectionBox.style.height = `${height}px`;
                 selectionBox.style.left = `${left}px`;
                 selectionBox.style.top = `${top}px`;
                 return;
             }
-
             if (state.isPanning) {
                 e.preventDefault();
                 state.panX = e.clientX - state.startPanX;
@@ -169,34 +149,21 @@ document.addEventListener("DOMContentLoaded", () => {
             if (isBoxSelecting) {
                 isBoxSelecting = false;
                 selectionBox.hidden = true;
-                
                 const boxRect = selectionBox.getBoundingClientRect();
-                
                 if (boxRect.width > 2 && boxRect.height > 2) {
                     if (!e.ctrlKey && !e.shiftKey) clearSelection();
-
                     document.querySelectorAll(".element").forEach(el => {
                         const elRect = el.getBoundingClientRect();
-                        const intersects = !(
-                            boxRect.right < elRect.left || 
-                            boxRect.left > elRect.right || 
-                            boxRect.bottom < elRect.top || 
-                            boxRect.top > elRect.bottom
-                        );
-
-                        if (intersects) {
-                            addToSelection(el);
-                        }
+                        const intersects = !(boxRect.right < elRect.left || boxRect.left > elRect.right || boxRect.bottom < elRect.top || boxRect.top > elRect.bottom);
+                        if (intersects) addToSelection(el);
                     });
                 }
                 return;
             }
-
             state.isPanning = false;
             viewport.style.cursor = "grab";
         });
 
-        // Zooming
         viewport.addEventListener("wheel", (e) => {
             e.preventDefault();
             const zoomIntensity = 0.02;
@@ -254,7 +221,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // --- Save/Load/Export ---
     function getDiagramJSON() {
         const data = { elements: [], lines: [] };
         document.querySelectorAll(".element").forEach(el => {

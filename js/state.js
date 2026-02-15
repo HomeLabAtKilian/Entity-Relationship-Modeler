@@ -4,7 +4,7 @@ export const state = {
     lineStart: null,
     elementCounter: 0,
     selectedElements: new Set(),
-    viewMode: 'basic', // Changed from 'school'
+    viewMode: 'basic', 
     
     // Viewport
     scale: 1,
