@@ -30,24 +30,6 @@ export function createLine(startEl, endEl, savedData) {
         line.classList.add(savedData.lineType);
     }
 
-    // Click to cycle line types
-    line.addEventListener("click", (e) => {
-        if (state.deleteMode) {
-            line.remove();
-            return;
-        }
-        e.stopPropagation();
-        
-        if (line.classList.contains("double")) {
-            line.classList.remove("double");
-            line.classList.add("dashed");
-        } else if (line.classList.contains("dashed")) {
-            line.classList.remove("dashed");
-        } else {
-            line.classList.add("double");
-        }
-    });
-
     const startCard = createCardSpan(savedData ? savedData.cardStart : "");
     startCard.classList.add("start");
     const endCard = createCardSpan(savedData ? savedData.cardEnd : "");
@@ -69,11 +51,23 @@ function createCardSpan(text) {
     const span = document.createElement("span");
     span.className = "cardinality";
     span.innerText = text;
-    span.contentEditable = true; 
-    span.setAttribute("spellcheck", "false");
+    span.contentEditable = false; // Disable typing
+    span.style.cursor = "pointer"; // Make it look clickable
     
-    // Prevent drag propagation when clicking text
+    // Prevent drag propagation
     span.addEventListener("mousedown", (e) => e.stopPropagation());
+
+    // CLICK TO CYCLE LOGIC
+    span.addEventListener("click", (e) => {
+        if (state.deleteMode) return;
+        e.stopPropagation();
+        
+        const current = span.innerText;
+        if (current === "") span.innerText = "1";
+        else if (current === "1") span.innerText = "N";
+        else if (current === "N") span.innerText = "M";
+        else span.innerText = ""; // Reset to empty
+    });
 
     return span;
 }
@@ -91,7 +85,7 @@ export function positionLine(line, startEl, endEl) {
     const length = Math.hypot(dx, dy);
     const angle = Math.atan2(dy, dx); // Radians
 
-    // 3. Position the Main Line (Visual)
+    // 3. Position the Main Line
     line.style.width = `${length}px`;
     line.style.left = `${x1}px`;
     line.style.top = `${y1}px`;
@@ -101,47 +95,27 @@ export function positionLine(line, startEl, endEl) {
     const startCard = line.querySelector(".start");
     const endCard = line.querySelector(".end");
     
-    // Calculate distance from center to edge of box at this specific angle
     const startOffset = getDistanceToEdge(startEl.offsetWidth, startEl.offsetHeight, angle);
-    const endOffset = getDistanceToEdge(endEl.offsetWidth, endEl.offsetHeight, angle + Math.PI); // +PI because entering from opposite side
+    const endOffset = getDistanceToEdge(endEl.offsetWidth, endEl.offsetHeight, angle + Math.PI); 
 
-    const padding = 25; // Extra space outside the box
+    const padding = 25; 
 
-    // Position Start Label
-    // We position relative to the line's start (0,0)
     startCard.style.left = `${startOffset + padding}px`;
-    startCard.style.top = `-12px`; // Vertically center on line
-    startCard.style.transform = `rotate(${-angle * 180 / Math.PI}deg)`; // Counter-rotate to keep text upright
+    startCard.style.top = `-12px`; 
+    startCard.style.transform = `rotate(${-angle * 180 / Math.PI}deg)`; 
 
-    // Position End Label
-    // We position relative to the line's start, so we go full length minus offset
     endCard.style.left = `${length - (endOffset + padding)}px`;
     endCard.style.top = `-12px`;
     endCard.style.transform = `rotate(${-angle * 180 / Math.PI}deg)`;
 }
 
-/**
- * Calculates the distance from the center of a rectangle to its edge
- * along a specific angle.
- */
 function getDistanceToEdge(width, height, angle) {
-    // Normalize angle
     const w = width / 2;
     const h = height / 2;
-    
-    // Avoid division by zero
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
-    
-    // Calculate distance to vertical edges (left/right)
-    // dist = w / |cos(theta)|
     const distX = Math.abs(w / (Math.abs(cos) > 0.001 ? cos : 0.001));
-    
-    // Calculate distance to horizontal edges (top/bottom)
-    // dist = h / |sin(theta)|
     const distY = Math.abs(h / (Math.abs(sin) > 0.001 ? sin : 0.001));
-
-    // The actual intersection is the closer of the two
     return Math.min(distX, distY);
 }
 
