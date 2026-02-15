@@ -244,4 +244,78 @@ button.active {
     box-shadow: 0 2px 4px rgba(0,0,0,0.5);
 }
 
-/* ... (Keep LOD CSS) ... */
+* { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; user-select: none; }
+body { background-color: #1e1e1e; margin: 0; overflow: hidden; width: 100vw; height: 100vh; }
+
+/* --- Menu --- */
+#menu-bar { position: fixed; top: 20px; left: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 1000; background-color: #2d2d2d; padding: 10px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); border: 1px solid #444; max-height: 90vh; overflow-y: auto; }
+.menu-group { display: flex; flex-direction: column; gap: 5px; border-bottom: 1px solid #444; padding-bottom: 5px; }
+.menu-group:last-child { border-bottom: none; }
+
+button { background-color: #3d3d3d; color: #e0e0e0; border: 1px solid #555; padding: 8px; cursor: pointer; border-radius: 4px; transition: all 0.2s; font-size: 13px; font-weight: 500; }
+button:hover { background-color: #505050; }
+button.active { background-color: #007acc; border-color: #0090ff; color: white; }
+#delete_mode { background-color: #96261f; color: white; border: 1px solid #c0392b; }
+#delete_mode.delete-active { background-color: #ff0000; animation: pulse-red 1.5s infinite; }
+
+/* Toggle Switch */
+.toggle-container { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 5px; }
+.switch-label { color: white; font-size: 12px; }
+.switch { position: relative; display: inline-block; width: 40px; height: 20px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 20px; }
+.slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
+input:checked + .slider { background-color: #2196F3; }
+input:checked + .slider:before { transform: translateX(20px); }
+
+/* --- Viewport --- */
+#viewport { width: 100%; height: 100%; cursor: grab; overflow: hidden; background-color: #1e1e1e; position: relative; background-image: linear-gradient(to right, #333 1px, transparent 1px), linear-gradient(to bottom, #333 1px, transparent 1px); }
+#viewport:active { cursor: grabbing; }
+#content-layer { position: absolute; top: 0; left: 0; width: 0; height: 0; transform-origin: 0 0; }
+#selection-box { position: absolute; border: 1px solid #0090ff; background-color: rgba(0, 144, 255, 0.2); z-index: 9999; pointer-events: none; }
+
+/* --- Elements --- */
+.element { position: absolute; display: flex; justify-content: center; align-items: center; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: pointer; z-index: 10; border: 2px solid transparent; transition: transform 0.2s ease; }
+.element-text { margin: 0; padding: 5px; color: white; font-weight: 500; font-size: 14px; pointer-events: none; outline: none; width: 100%; line-height: 1.2; white-space: pre-wrap; }
+.element.selected { border: 2px solid white; box-shadow: 0 0 15px rgba(0, 144, 255, 0.6); }
+.element.primary-key { border-color: #ffd700 !important; box-shadow: 0 0 10px rgba(255, 215, 0, 0.5); }
+.element.primary-key .element-text { text-decoration: underline; font-weight: bold; }
+.element.line-start { border: 2px dashed #00ff00; animation: pulse-green 1s infinite; }
+
+/* Advanced Styles */
+.element.weak { border: 4px double white !important; } /* Weak Entity / Identifying Rel */
+.element[data-type="attribute-multi"] { border: 4px double #13a200 !important; } /* Multivalued */
+.element[data-type="attribute-derived"] { border: 2px dashed #13a200 !important; } /* Derived */
+
+/* ISA Triangle */
+.element[data-type="isa"] {
+    width: 0 !important; height: 0 !important;
+    border-left: 40px solid transparent !important;
+    border-right: 40px solid transparent !important;
+    border-bottom: 70px solid #fff !important;
+    border-top: 0 !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+}
+.element[data-type="isa"] .element-text {
+    color: black; position: absolute; top: 25px; left: -20px; width: 40px; font-weight: bold;
+}
+
+/* Schema Box */
+.element.schema-box { background-color: #f0f0f0 !important; color: black !important; border: 1px solid #999; border-radius: 4px; align-items: flex-start; text-align: left; padding: 10px; width: 300px; height: auto; min-height: 100px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+.element.schema-box .element-text { color: black; pointer-events: auto; text-align: left; height: 100%; }
+
+/* Lines */
+.line { position: absolute; pointer-events: auto; cursor: pointer; border-bottom: 2px solid #ccc; height: 2px; transform-origin: 0 0; z-index: 5; overflow: visible; }
+.line.double { border-bottom: 4px double #ccc; }
+.line.dashed { border-bottom: 2px dashed #ccc; }
+.cardinality { color: #00ff00; font-size: 14px; font-weight: bold; background-color: #1e1e1e; padding: 2px 6px; border-radius: 4px; pointer-events: auto; cursor: pointer; border: 1px solid #444; position: absolute; z-index: 20; transform-origin: center center; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+
+/* LOD */
+#viewport.zoom-low .element-text { opacity: 0; }
+#viewport.zoom-low .element { border-width: 3px; box-shadow: none; }
+#viewport.zoom-very-low .element { transform: scale(1.5) !important; border: 2px solid rgba(255,255,255,0.9); z-index: 100; }
+#viewport.zoom-very-low .line { opacity: 0.3; }
+#viewport.zoom-very-low .cardinality { display: none; }
+@keyframes pulse-green { 0% { box-shadow: 0 0 0 0 rgba(0, 255, 0, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(0, 255, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(0, 255, 0, 0); } }
+@keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(255, 0, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); } }

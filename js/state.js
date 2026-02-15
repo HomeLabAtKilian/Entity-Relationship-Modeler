@@ -4,6 +4,7 @@ export const state = {
     lineStart: null,
     elementCounter: 0,
     selectedElements: new Set(),
+    viewMode: 'school', // 'school' or 'college'
     
     // Viewport
     scale: 1,
@@ -19,6 +20,7 @@ export const state = {
         relationship: "#0090ff", 
         attribute: "#13a200",    
         label: "transparent",
-        schema: "#f0f0f0"
+        schema: "#f0f0f0",
+        isa: "transparent"
     }
 };

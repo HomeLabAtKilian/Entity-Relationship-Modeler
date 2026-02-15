@@ -11,25 +11,51 @@
 
     <!-- UI Layer -->
     <div id="menu-bar">
+        <!-- View Switcher -->
+        <div class="menu-group">
+            <div class="toggle-container">
+                <label class="switch-label">School</label>
+                <label class="switch">
+                    <input type="checkbox" id="view_toggle">
+                    <span class="slider round"></span>
+                </label>
+                <label class="switch-label">College</label>
+            </div>
+        </div>
+
         <div class="menu-group">
             <button id="add_entity">Entity</button>
             <button id="add_attribute">Attribute</button>
             <button id="add_relationship">Relationship</button>
             <button id="add_label">Label</button>
+            
+            <!-- College Features (Hidden by default) -->
+            <button id="add_attr_multi" class="college-feature" style="display:none;">Multivalued Attr.</button>
+            <button id="add_attr_derived" class="college-feature" style="display:none;">Derived Attr.</button>
+            <button id="add_isa" class="college-feature" style="display:none;">ISA (Generalization)</button>
         </div>
+
         <div class="menu-group">
             <button id="toggle_pk" style="color: #ffd700; font-weight: bold;">Primary Key</button>
-            <button id="generate_schema" style="color: #00ffcc; font-weight: bold;">Relationsmodell</button>
+            <button id="toggle_weak" style="color: #fff; border: 1px double #fff;">Weak / Identifying</button>
         </div>
+
+        <div class="menu-group">
+            <button id="generate_schema" style="color: #00ffcc; font-weight: bold;">Relationsmodell</button>
+            <button id="generate_sql" class="college-feature" style="display:none; color: #ff99cc; font-weight: bold;">Export SQL</button>
+        </div>
+
         <div class="menu-group">
             <button id="add_line">Line Tool</button>
             <button id="delete_mode" class="danger-btn">Delete Tool</button>
         </div>
+
         <div class="menu-group">
             <button id="zoom_in">Zoom +</button>
             <button id="zoom_out">Zoom -</button>
             <button id="zoom_reset">Reset</button>
         </div>
+
         <div class="menu-group">
             <button id="save_data">Export Image</button>
             <button id="save_json">Save Project</button>
@@ -38,12 +64,8 @@
         </div>
     </div>
 
-    <!-- The Infinite Canvas Viewport -->
     <main id="viewport">
-        <div id="content-layer">
-            <!-- Elements get injected here -->
-        </div>
-        <!-- Selection Box Overlay -->
+        <div id="content-layer"></div>
         <div id="selection-box" hidden></div>
     </main>
 

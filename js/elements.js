@@ -17,10 +17,8 @@ export function createElement(type, savedData = null) {
     const text = document.createElement("p");
     text.classList.add("element-text");
     text.contentEditable = true;
-    text.innerText = savedData ? savedData.text : (type === 'schema' ? '' : type.charAt(0).toUpperCase() + type.slice(1));
+    text.innerText = savedData ? savedData.text : (type === 'schema' ? '' : (type === 'isa' ? 'ISA' : type.charAt(0).toUpperCase() + type.slice(1)));
     text.setAttribute("spellcheck", "false");
-    
-    // Paste Sanitization
     text.addEventListener("paste", sanitizePaste);
 
     // Styling
@@ -36,9 +34,14 @@ export function createElement(type, savedData = null) {
             text.style.transform = "rotate(-45deg)";
             break;
         case "attribute":
+        case "attribute-multi":
+        case "attribute-derived":
             element.style.backgroundColor = state.colors.attribute;
             element.style.width = "200px"; element.style.height = "60px";
             element.style.borderRadius = "50%";
+            break;
+        case "isa":
+            // CSS handles the triangle shape
             break;
         case "label":
             element.style.backgroundColor = state.colors.label;
@@ -81,12 +84,8 @@ export function createElement(type, savedData = null) {
         if (state.lineMode) {
             handleLineClick(element);
         } else {
-            // Ctrl Click for Multi-Select
-            if (e.ctrlKey) {
-                toggleSelection(element, true);
-            } else {
-                toggleSelection(element, false);
-            }
+            if (e.ctrlKey) toggleSelection(element, true);
+            else toggleSelection(element, false);
         }
     });
 
@@ -95,16 +94,12 @@ export function createElement(type, savedData = null) {
         if (e.button !== 0) return;
         e.stopPropagation();
 
-        // If clicking an unselected element without Ctrl, select only it
         if (!state.selectedElements.has(element) && !e.ctrlKey) {
             clearSelection();
             addToSelection(element);
-        } 
-        // If Ctrl clicking, add to selection (handled in click, but we need to prevent drag clearing)
-        else if (e.ctrlKey && !state.selectedElements.has(element)) {
+        } else if (e.ctrlKey && !state.selectedElements.has(element)) {
             addToSelection(element);
         }
-
         initDrag(e);
     });
 
@@ -118,19 +113,14 @@ export function createElement(type, savedData = null) {
 function initDrag(e) {
     const startMouseX = e.clientX;
     const startMouseY = e.clientY;
-    
     const initialPositions = new Map();
     state.selectedElements.forEach(el => {
-        initialPositions.set(el.id, { 
-            left: parseFloat(el.style.left) || 0, 
-            top: parseFloat(el.style.top) || 0 
-        });
+        initialPositions.set(el.id, { left: parseFloat(el.style.left) || 0, top: parseFloat(el.style.top) || 0 });
     });
 
     function onMouseMove(ev) {
         const dx = (ev.clientX - startMouseX) / state.scale;
         const dy = (ev.clientY - startMouseY) / state.scale;
-
         state.selectedElements.forEach(el => {
             const init = initialPositions.get(el.id);
             const rawLeft = init.left + dx;
@@ -147,7 +137,6 @@ function initDrag(e) {
         window.removeEventListener("mousemove", onMouseMove);
         window.removeEventListener("mouseup", onMouseUp);
     }
-
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
 }
@@ -161,22 +150,11 @@ export function deleteElement(el) {
 export function toggleSelection(el, multi) {
     if (!multi) clearSelection();
     if (state.selectedElements.has(el)) {
-        if (multi) { // Only deselect if multi-mode
-            el.classList.remove("selected");
-            state.selectedElements.delete(el);
-        }
+        if (multi) { el.classList.remove("selected"); state.selectedElements.delete(el); }
     } else {
-        el.classList.add("selected");
-        state.selectedElements.add(el);
+        el.classList.add("selected"); state.selectedElements.add(el);
     }
 }
 
-export function addToSelection(el) {
-    el.classList.add("selected");
-    state.selectedElements.add(el);
-}
-
-export function clearSelection() {
-    state.selectedElements.forEach(el => el.classList.remove("selected"));
-    state.selectedElements.clear();
-}
+export function addToSelection(el) { el.classList.add("selected"); state.selectedElements.add(el); }
+export function clearSelection() { state.selectedElements.forEach(el => el.classList.remove("selected")); state.selectedElements.clear(); }

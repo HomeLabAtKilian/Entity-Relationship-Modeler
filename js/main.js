@@ -2,31 +2,51 @@ import { state } from './state.js';
 import { createElement, deleteElement, clearSelection, addToSelection } from './elements.js';
 import { createLine } from './lines.js';
 import { generateSchema } from './schema.js';
+import { generateSQL } from './sql.js';
 
 document.addEventListener("DOMContentLoaded", () => {
     const viewport = document.getElementById("viewport");
     const contentLayer = document.getElementById("content-layer");
     const selectionBox = document.getElementById("selection-box");
 
-    // --- Init ---
     setupMenuListeners();
     setupViewportControls();
     setupKeyboardShortcuts();
     updateTransform();
 
-    // --- Menu ---
     function setupMenuListeners() {
+        // Basic
         document.getElementById("add_entity").addEventListener("click", () => createElement("entity"));
         document.getElementById("add_attribute").addEventListener("click", () => createElement("attribute"));
         document.getElementById("add_relationship").addEventListener("click", () => createElement("relationship"));
         document.getElementById("add_label").addEventListener("click", () => createElement("label"));
         
+        // College Features
+        document.getElementById("add_attr_multi").addEventListener("click", () => createElement("attribute-multi"));
+        document.getElementById("add_attr_derived").addEventListener("click", () => createElement("attribute-derived"));
+        document.getElementById("add_isa").addEventListener("click", () => createElement("isa"));
+        document.getElementById("generate_sql").addEventListener("click", generateSQL);
+
+        // Toggles
         document.getElementById("toggle_pk").addEventListener("click", () => {
             state.selectedElements.forEach(el => el.classList.toggle("primary-key"));
+        });
+        document.getElementById("toggle_weak").addEventListener("click", () => {
+            state.selectedElements.forEach(el => el.classList.toggle("weak"));
+        });
+
+        // View Switcher
+        document.getElementById("view_toggle").addEventListener("change", (e) => {
+            state.viewMode = e.target.checked ? 'college' : 'school';
+            const collegeBtns = document.querySelectorAll('.college-feature');
+            collegeBtns.forEach(btn => {
+                btn.style.display = state.viewMode === 'college' ? 'block' : 'none';
+            });
         });
 
         document.getElementById("generate_schema").addEventListener("click", generateSchema);
 
+        // Tools
         const lineBtn = document.getElementById("add_line");
         lineBtn.addEventListener("click", () => {
             state.lineMode = !state.lineMode;
@@ -45,13 +65,10 @@ document.addEventListener("DOMContentLoaded", () => {
             updateButtonStates();
         });
 
+        // Zoom & File
         document.getElementById("zoom_in").addEventListener("click", () => zoomCenter(0.1));
         document.getElementById("zoom_out").addEventListener("click", () => zoomCenter(-0.1));
-        document.getElementById("zoom_reset").addEventListener("click", () => {
-            state.scale = 1; state.panX = 0; state.panY = 0;
-            updateTransform();
-        });
-
+        document.getElementById("zoom_reset").addEventListener("click", () => { state.scale = 1; state.panX = 0; state.panY = 0; updateTransform(); });
         document.getElementById("save_data").addEventListener("click", exportImage);
         document.getElementById("save_json").addEventListener("click", saveDiagram);
         document.getElementById("clear_canvas").addEventListener("click", clearCanvas);
@@ -75,7 +92,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (state.deleteMode) deleteBtn.classList.add("delete-active"); else deleteBtn.classList.remove("delete-active");
     }
 
-    // --- Viewport Controls ---
+    // --- Viewport Controls (Same as before) ---
     function setupViewportControls() {
         let isBoxSelecting = false;
         let boxStartX = 0;
@@ -96,7 +113,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 selectionBox.hidden = false;
                 return;
             }
-
             if (e.button === 0 && (e.target === viewport || e.target === contentLayer)) {
                 state.isPanning = true;
                 state.startPanX = e.clientX - state.panX;
@@ -119,7 +135,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 selectionBox.style.top = `${top}px`;
                 return;
             }
-
             if (state.isPanning) {
                 e.preventDefault();
                 state.panX = e.clientX - state.startPanX;
@@ -207,7 +222,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // --- Save/Load/Export ---
-
     function getDiagramJSON() {
         const data = { elements: [], lines: [] };
         document.querySelectorAll(".element").forEach(el => {
@@ -227,7 +241,6 @@ document.addEventListener("DOMContentLoaded", () => {
             let type = "";
             if (l.classList.contains("double")) type = "double";
             if (l.classList.contains("dashed")) type = "dashed";
-            
             data.lines.push({
                 startId: l.dataset.startId,
                 endId: l.dataset.endId,
@@ -280,38 +293,24 @@ document.addEventListener("DOMContentLoaded", () => {
             try {
                 const data = JSON.parse(e.target.result);
                 clearCanvas();
-                
-                // 1. Create Elements
                 let maxId = 0;
                 data.elements.forEach(d => {
                     createElement(d.type, d);
-                    // Sync ID counter
                     const parts = d.id.split('-');
                     const idNum = parseInt(parts[parts.length - 1]);
                     if (!isNaN(idNum) && idNum > maxId) maxId = idNum;
                 });
                 state.elementCounter = maxId + 1;
-
-                // 2. Create Lines (Wait longer for DOM layout)
-                // Using requestAnimationFrame + 200ms timeout ensures browser has painted
                 requestAnimationFrame(() => {
                     setTimeout(() => {
                         data.lines.forEach(l => {
                             const s = document.getElementById(l.startId);
                             const end = document.getElementById(l.endId);
-                            if (s && end) {
-                                createLine(s, end, l);
-                            } else {
-                                console.warn(`Could not connect line: ${l.startId} to ${l.endId}`);
-                            }
+                            if (s && end) createLine(s, end, l);
                         });
                     }, 200);
                 });
-
-            } catch (err) { 
-                console.error(err);
-                alert("Error loading file. Please check the console.");
-            }
+            } catch (err) { console.error(err); alert("Error loading file."); }
         };
         reader.readAsText(file);
     }
