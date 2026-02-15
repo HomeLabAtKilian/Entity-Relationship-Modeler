@@ -30,27 +30,15 @@ export function createLine(startEl, endEl, savedData) {
         line.classList.add(savedData.lineType);
     }
 
-    // Click to cycle line types
-    line.addEventListener("click", (e) => {
-        if (state.deleteMode) {
-            line.remove();
-            return;
-        }
-        e.stopPropagation();
-        
-        if (line.classList.contains("double")) {
-            line.classList.remove("double");
-            line.classList.add("dashed");
-        } else if (line.classList.contains("dashed")) {
-            line.classList.remove("dashed");
-        } else {
-            line.classList.add("double");
-        }
-    });
+    // --- REMOVED: Line Click Listener ---
+    // We no longer toggle styles by clicking the thin line.
+    // It is now handled by Right-Clicking the cardinality box.
 
-    const startCard = createCardSpan(savedData ? savedData.cardStart : "");
+    // Pass the 'line' element to the card creator so it can modify the line
+    const startCard = createCardSpan(savedData ? savedData.cardStart : "", line);
     startCard.classList.add("start");
-    const endCard = createCardSpan(savedData ? savedData.cardEnd : "");
+    
+    const endCard = createCardSpan(savedData ? savedData.cardEnd : "", line);
     endCard.classList.add("end");
 
     // --- VISIBILITY LOGIC ---
@@ -64,12 +52,12 @@ export function createLine(startEl, endEl, savedData) {
     } 
     // 2. Entity <-> Relationship: Only show cardinality near the Entity
     else if (type1 === 'entity' && type2 === 'relationship') {
-        endCard.style.display = 'none'; // Hide box near Relationship
+        endCard.style.display = 'none'; 
     } 
     else if (type1 === 'relationship' && type2 === 'entity') {
-        startCard.style.display = 'none'; // Hide box near Relationship
+        startCard.style.display = 'none'; 
     }
-    // 3. Entity <-> Entity (Recursive/Direct): Keep both visible
+    // 3. Entity <-> Entity: Keep both visible
 
     line.appendChild(startCard);
     line.appendChild(endCard);
@@ -83,15 +71,17 @@ export function createLine(startEl, endEl, savedData) {
     positionLine(line, startEl, endEl);
 }
 
-function createCardSpan(text) {
+function createCardSpan(text, lineElement) {
     const span = document.createElement("span");
     span.className = "cardinality";
     span.innerText = text;
     span.contentEditable = false; 
     span.style.cursor = "pointer"; 
     
+    // Prevent drag propagation
     span.addEventListener("mousedown", (e) => e.stopPropagation());
 
+    // LEFT CLICK: Cycle Values
     span.addEventListener("click", (e) => {
         if (state.deleteMode) return;
         e.stopPropagation();
@@ -101,6 +91,21 @@ function createCardSpan(text) {
         else if (current === "1") span.innerText = "N";
         else if (current === "N") span.innerText = "M";
         else span.innerText = ""; 
+    });
+
+    // RIGHT CLICK: Toggle Line Style (Solid <-> Double)
+    span.addEventListener("contextmenu", (e) => {
+        e.preventDefault(); // Stop browser menu
+        e.stopPropagation();
+
+        if (lineElement.classList.contains("double")) {
+            lineElement.classList.remove("double");
+            // Optional: If you want dashed support, toggle to dashed here
+            // lineElement.classList.add("dashed");
+        } else {
+            lineElement.classList.add("double");
+            lineElement.classList.remove("dashed");
+        }
     });
 
     return span;
@@ -130,14 +135,14 @@ export function positionLine(line, startEl, endEl) {
     const endOffset = getDistanceToEdge(endEl.offsetWidth, endEl.offsetHeight, angle + Math.PI); 
     const padding = 25; 
 
-    // Position Start Label (if visible)
+    // Position Start Label
     if (startCard.style.display !== 'none') {
         startCard.style.left = `${startOffset + padding}px`;
         startCard.style.top = `-12px`; 
         startCard.style.transform = `rotate(${-angle * 180 / Math.PI}deg)`; 
     }
 
-    // Position End Label (if visible)
+    // Position End Label
     if (endCard.style.display !== 'none') {
         endCard.style.left = `${length - (endOffset + padding)}px`;
         endCard.style.top = `-12px`;
