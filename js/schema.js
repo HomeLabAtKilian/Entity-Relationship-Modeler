@@ -18,7 +18,8 @@ export function generateSchema() {
             isWeak: entity.classList.contains('weak'),
             // Helper to get FULL PK (Own + Inherited)
             getFullPKs: function() {
-                const inherited = this.fks.filter(fk => fk.is partOfPK).map(fk => fk.name);
+                // FIX: Removed space in 'isPartOfPK'
+                const inherited = this.fks.filter(fk => fk.isPartOfPK).map(fk => fk.name);
                 return [...inherited, ...this.pks];
             }
         });
@@ -36,7 +37,6 @@ export function generateSchema() {
     });
 
     // --- PASS 1.5: Handle Weak Entities (Recursive Resolution) ---
-    // We loop until no more changes occur to handle chains (A -> B -> C)
     let changes = true;
     while(changes) {
         changes = false;
@@ -52,18 +52,17 @@ export function generateSchema() {
                                 if (conn.entity.id !== id) {
                                     const ownerTable = schemaMap.get(conn.entity.id);
                                     if (ownerTable) {
-                                        // Get Owner's FULL PKs (might include their own owner's PKs)
+                                        // Get Owner's FULL PKs
                                         const ownerPKs = ownerTable.pks.concat(
                                             ownerTable.fks.filter(f => f.isPartOfPK).map(f => f.name)
                                         );
 
                                         ownerPKs.forEach(pk => {
-                                            // Avoid duplicates
                                             if (!table.fks.some(f => f.name === pk)) {
                                                 table.fks.push({ 
                                                     name: pk, 
                                                     source: ownerTable.name, 
-                                                    isPartOfPK: true // Crucial: Weak entities use owner key as part of their PK
+                                                    isPartOfPK: true 
                                                 });
                                                 changes = true;
                                             }
@@ -96,7 +95,7 @@ export function generateSchema() {
                                 subTable.fks.push({ 
                                     name: pk, 
                                     source: superTable.name, 
-                                    isPartOfPK: true // Subclass PK is also FK
+                                    isPartOfPK: true 
                                 });
                             }
                         });
@@ -115,11 +114,8 @@ export function generateSchema() {
         if (connections.length > 2) {
             // Ternary -> New Table
             const newTable = { name: relName, columns: [] };
-            
-            // Add Attributes
             relAttributes.forEach(attr => newTable.columns.push({ name: attr, isPK: false, isFK: false }));
 
-            // Add Keys from all participants
             connections.forEach(conn => {
                 const ent = schemaMap.get(conn.entity.id);
                 if (ent) {
@@ -148,14 +144,12 @@ export function generateSchema() {
                 const newTable = { name: relName, columns: [] };
                 relAttributes.forEach(attr => newTable.columns.push({ name: attr, isPK: false, isFK: false }));
 
-                // Ent1 Keys
                 const pks1 = ent1.pks.concat(ent1.fks.filter(f => f.isPartOfPK).map(f => f.name));
                 pks1.forEach(pk => {
                     const colName = resolveCollision(newTable.columns, pk, ent1.name);
                     newTable.columns.push({ name: colName, isPK: true, isFK: true, source: ent1.name });
                 });
 
-                // Ent2 Keys
                 const pks2 = ent2.pks.concat(ent2.fks.filter(f => f.isPartOfPK).map(f => f.name));
                 pks2.forEach(pk => {
                     let colName = pk;
@@ -170,29 +164,23 @@ export function generateSchema() {
             else {
                 let target, source, prefix = "";
                 
-                // Determine direction
                 if ((card1 === 'N' || card1 === 'M') && (card2 === '1' || card2 === '')) {
-                    target = ent1; source = ent2; // 1(Source) -> N(Target)
+                    target = ent1; source = ent2; 
                     if (isRecursive) prefix = "supervisor_";
                 } else if ((card1 === '1' || card1 === '') && (card2 === 'N' || card2 === 'M')) {
                     target = ent2; source = ent1;
                     if (isRecursive) prefix = "supervisor_";
                 } else {
-                    // 1:1 - Arbitrary or based on total participation (not tracked yet)
                     target = ent1; source = ent2;
-                    if (isRecursive) prefix = "spouse_"; // Specific prefix for 1:1 recursive
+                    if (isRecursive) prefix = "spouse_"; 
                 }
 
-                // Migrate Keys
                 const sourcePKs = source.pks.concat(source.fks.filter(f => f.isPartOfPK).map(f => f.name));
                 sourcePKs.forEach(pk => {
                     const colName = prefix + pk;
-                    // Check collision in Target
-                    // Note: In 1:N, we don't rename for collision usually, but we should check
                     target.fks.push({ name: colName, source: source.name, isPartOfPK: false });
                 });
                 
-                // Add Relationship Attributes to Target
                 relAttributes.forEach(attr => target.attributes.push(attr));
             }
         }
@@ -202,7 +190,6 @@ export function generateSchema() {
     let html = "<b>Relationsmodell:</b><br><br>";
     
     schemaMap.forEach(table => {
-        // Convert Entity format to generic column format for rendering
         const columns = [
             ...table.pks.map(p => ({ name: p, isPK: true, isFK: false })),
             ...table.attributes.map(a => ({ name: a, isPK: false, isFK: false })),
@@ -224,7 +211,6 @@ export function generateSchema() {
 
 // --- Helpers ---
 
-// Resolves name collisions (e.g., Student.ID and Course.ID -> Student_ID, Course_ID)
 function resolveCollision(existingColumns, candidateName, sourceName) {
     const exists = existingColumns.some(c => c.name === candidateName);
     if (exists) {
