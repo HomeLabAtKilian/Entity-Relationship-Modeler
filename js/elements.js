@@ -41,7 +41,6 @@ export function createElement(type, savedData = null) {
             element.style.borderRadius = "50%";
             break;
         case "isa":
-            // CSS handles the triangle shape
             break;
         case "label":
             element.style.backgroundColor = state.colors.label;
@@ -74,7 +73,7 @@ export function createElement(type, savedData = null) {
         element.style.top = `${snapY}px`;
     }
 
-    // Listeners
+    // --- CLICK LISTENER (Selection Logic) ---
     element.addEventListener("click", (e) => {
         e.stopPropagation();
         if (state.deleteMode) {
@@ -83,23 +82,47 @@ export function createElement(type, savedData = null) {
         }
         if (state.lineMode) {
             handleLineClick(element);
+            return;
+        }
+
+        // SELECTION LOGIC
+        if (e.ctrlKey) {
+            // FIX: If we just added it in mousedown, don't toggle it off immediately
+            if (element.dataset.justSelected === "true") {
+                delete element.dataset.justSelected; // Clear flag, keep selected
+            } else {
+                toggleSelection(element, true); // Toggle normally
+            }
         } else {
-            if (e.ctrlKey) toggleSelection(element, true);
-            else toggleSelection(element, false);
+            // Normal click: Select only this (unless we just dragged)
+            if (element.dataset.justDragged === "true") {
+                delete element.dataset.justDragged;
+            } else {
+                toggleSelection(element, false);
+            }
         }
     });
 
+    // --- MOUSEDOWN LISTENER (Drag & Pre-Selection) ---
     element.addEventListener("mousedown", (e) => {
         if (state.deleteMode || state.lineMode) return;
         if (e.button !== 0) return;
         e.stopPropagation();
 
-        if (!state.selectedElements.has(element) && !e.ctrlKey) {
-            clearSelection();
-            addToSelection(element);
-        } else if (e.ctrlKey && !state.selectedElements.has(element)) {
-            addToSelection(element);
+        // 1. Handle Selection BEFORE Drag
+        if (e.ctrlKey) {
+            if (!state.selectedElements.has(element)) {
+                addToSelection(element);
+                // Mark that we just selected it, so 'click' doesn't deselect it
+                element.dataset.justSelected = "true";
+            }
+        } else {
+            if (!state.selectedElements.has(element)) {
+                clearSelection();
+                addToSelection(element);
+            }
         }
+
         initDrag(e);
     });
 
@@ -113,14 +136,18 @@ export function createElement(type, savedData = null) {
 function initDrag(e) {
     const startMouseX = e.clientX;
     const startMouseY = e.clientY;
+    let hasMoved = false;
+    
     const initialPositions = new Map();
     state.selectedElements.forEach(el => {
         initialPositions.set(el.id, { left: parseFloat(el.style.left) || 0, top: parseFloat(el.style.top) || 0 });
     });
 
     function onMouseMove(ev) {
+        hasMoved = true;
         const dx = (ev.clientX - startMouseX) / state.scale;
         const dy = (ev.clientY - startMouseY) / state.scale;
+
         state.selectedElements.forEach(el => {
             const init = initialPositions.get(el.id);
             const rawLeft = init.left + dx;
@@ -130,6 +157,9 @@ function initDrag(e) {
             el.style.left = `${snappedLeft}px`;
             el.style.top = `${snappedTop}px`;
             updateLines(el);
+            
+            // Mark as dragged so click doesn't reset selection
+            el.dataset.justDragged = "true";
         });
     }
 
@@ -137,6 +167,7 @@ function initDrag(e) {
         window.removeEventListener("mousemove", onMouseMove);
         window.removeEventListener("mouseup", onMouseUp);
     }
+
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
 }
@@ -150,11 +181,22 @@ export function deleteElement(el) {
 export function toggleSelection(el, multi) {
     if (!multi) clearSelection();
     if (state.selectedElements.has(el)) {
-        if (multi) { el.classList.remove("selected"); state.selectedElements.delete(el); }
+        if (multi) { 
+            el.classList.remove("selected"); 
+            state.selectedElements.delete(el); 
+        }
     } else {
-        el.classList.add("selected"); state.selectedElements.add(el);
+        el.classList.add("selected"); 
+        state.selectedElements.add(el);
     }
 }
 
-export function addToSelection(el) { el.classList.add("selected"); state.selectedElements.add(el); }
-export function clearSelection() { state.selectedElements.forEach(el => el.classList.remove("selected")); state.selectedElements.clear(); }
+export function addToSelection(el) { 
+    el.classList.add("selected"); 
+    state.selectedElements.add(el); 
+}
+
+export function clearSelection() { 
+    state.selectedElements.forEach(el => el.classList.remove("selected")); 
+    state.selectedElements.clear(); 
+}
