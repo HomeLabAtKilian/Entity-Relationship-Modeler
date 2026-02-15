@@ -9,7 +9,6 @@ export function generateSchema() {
         const attributes = [];
         const pks = [];
 
-        // Find connected attributes via lines
         if (entity.lines) {
             entity.lines.forEach(line => {
                 const otherId = (line.dataset.startId === entity.id) ? line.dataset.endId : line.dataset.startId;
@@ -26,10 +25,8 @@ export function generateSchema() {
             });
         }
 
-        // Format: Name ( <ins>PK</ins>, Attr1, Attr2 )
         let entry = `<b>${name}</b> ( `;
         
-        // Add PKs
         pks.forEach((pk, index) => {
             entry += `<ins>${pk}</ins>`;
             if (index < pks.length - 1) entry += ", ";
@@ -37,7 +34,6 @@ export function generateSchema() {
 
         if (pks.length > 0 && attributes.length > 0) entry += ", ";
 
-        // Add Attributes
         attributes.forEach((attr, index) => {
             entry += attr;
             if (index < attributes.length - 1) entry += ", ";
@@ -47,6 +43,10 @@ export function generateSchema() {
         schemaHTML += entry;
     });
 
-    // Spawn the Schema Box
-    createElement('schema', { text: schemaHTML });
+    // Spawn the Schema Box with explicit width
+    createElement('schema', { 
+        text: schemaHTML,
+        width: "400px", // Wider default
+        height: "auto"
+    });
 }
