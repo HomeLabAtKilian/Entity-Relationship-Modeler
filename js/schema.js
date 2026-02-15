@@ -1,10 +1,8 @@
 import { createElement } from './elements.js';
 
 export function generateSchema() {
-    // 1. Data Structures to hold our Schema
-    // Map: EntityID -> { name, pks: [], attributes: [], fks: [] }
     const schemaMap = new Map();
-    const intermediateTables = []; // For N:M relationships
+    const intermediateTables = [];
 
     const entities = document.querySelectorAll('.element[data-type="entity"]');
     const relationships = document.querySelectorAll('.element[data-type="relationship"]');
@@ -16,17 +14,16 @@ export function generateSchema() {
             name: data.name,
             pks: data.pks,
             attributes: data.attributes,
-            fks: [] // Foreign Keys will be added in Pass 2
+            fks: [] 
         });
     });
 
-    // --- PASS 2: Process Relationships (The Logic) ---
+    // --- PASS 2: Process Relationships ---
     relationships.forEach(rel => {
         const relName = rel.innerText.trim();
         const connections = getConnectedEntities(rel);
-        const relAttributes = getConnectedAttributes(rel); // Attributes on the diamond itself
+        const relAttributes = getConnectedAttributes(rel);
 
-        // We need exactly 2 entities for a standard binary relationship
         if (connections.length === 2) {
             const [c1, c2] = connections;
             const ent1 = schemaMap.get(c1.entity.id);
@@ -34,56 +31,41 @@ export function generateSchema() {
 
             if (!ent1 || !ent2) return;
 
-            const card1 = c1.cardinality.toUpperCase(); // Cardinality at Entity 1
-            const card2 = c2.cardinality.toUpperCase(); // Cardinality at Entity 2
+            const card1 = c1.cardinality.toUpperCase();
+            const card2 = c2.cardinality.toUpperCase();
 
-            // Logic: Determine 1:1, 1:N, or N:M
-            // Note: In Chen notation, if A has '1' and B has 'N', it means 1 A relates to N B's.
-            
-            // CASE N:M (Many-to-Many) -> New Table
+            // N:M -> New Table
             if ((card1 === 'N' || card1 === 'M') && (card2 === 'N' || card2 === 'M')) {
                 const newTable = {
-                    name: relName, // Table name = Relationship name
-                    pks: [], // Composite PK
-                    attributes: relAttributes, // Attributes on the relationship
+                    name: relName,
+                    pks: [],
+                    attributes: relAttributes,
                     fks: []
                 };
 
-                // Add PKs from both sides as FKs and Composite PKs
+                // Add PKs from both sides
                 ent1.pks.forEach(pk => {
-                    newTable.pks.push(pk); // Part of composite PK
+                    newTable.pks.push(pk); 
                     newTable.fks.push({ name: pk, source: ent1.name });
                 });
                 ent2.pks.forEach(pk => {
-                    newTable.pks.push(pk); // Part of composite PK
+                    newTable.pks.push(pk); 
                     newTable.fks.push({ name: pk, source: ent2.name });
                 });
 
                 intermediateTables.push(newTable);
             }
-            
-            // CASE 1:N (One-to-Many)
-            // If Ent1 is 'N' and Ent2 is '1' -> Ent1 gets FK from Ent2
+            // 1:N (Ent1 is N)
             else if ((card1 === 'N' || card1 === 'M') && (card2 === '1' || card2 === '')) {
-                // Ent1 is the "Many" side. It gets Ent2's PKs.
-                ent2.pks.forEach(pk => {
-                    ent1.fks.push({ name: pk, source: ent2.name });
-                });
+                ent2.pks.forEach(pk => ent1.fks.push({ name: pk, source: ent2.name }));
             }
-            // Reverse 1:N
+            // 1:N (Ent2 is N)
             else if ((card1 === '1' || card1 === '') && (card2 === 'N' || card2 === 'M')) {
-                // Ent2 is the "Many" side. It gets Ent1's PKs.
-                ent1.pks.forEach(pk => {
-                    ent2.fks.push({ name: pk, source: ent1.name });
-                });
+                ent1.pks.forEach(pk => ent2.fks.push({ name: pk, source: ent1.name }));
             }
-
-            // CASE 1:1 (One-to-One)
-            // Pick one side to hold the FK (usually the one with total participation, but we pick Ent1 arbitrarily here)
+            // 1:1
             else {
-                ent2.pks.forEach(pk => {
-                    ent1.fks.push({ name: pk, source: ent2.name });
-                });
+                ent2.pks.forEach(pk => ent1.fks.push({ name: pk, source: ent2.name }));
             }
         }
     });
@@ -91,12 +73,10 @@ export function generateSchema() {
     // --- PASS 3: Render HTML ---
     let html = "<b>Relationsmodell:</b><br><br>";
 
-    // 1. Render Entities
     schemaMap.forEach(table => {
         html += renderTableString(table);
     });
 
-    // 2. Render Intermediate Tables
     if (intermediateTables.length > 0) {
         html += "<br><i>Zwischentabellen (N:M):</i><br>";
         intermediateTables.forEach(table => {
@@ -104,7 +84,6 @@ export function generateSchema() {
         });
     }
 
-    // Spawn Box
     createElement('schema', { 
         text: html,
         width: "450px",
@@ -118,14 +97,30 @@ function renderTableString(table) {
     let str = `<b>${table.name}</b> ( `;
     const parts = [];
 
-    // Primary Keys
-    table.pks.forEach(pk => parts.push(`<ins>${pk}</ins>`));
+    // 1. Render Primary Keys (and check if they are also FKs)
+    table.pks.forEach(pk => {
+        // Check if this PK is also an FK (common in N:M tables)
+        const isAlsoFK = table.fks.some(fk => fk.name === pk);
+        
+        if (isAlsoFK) {
+            // Render as Underlined AND Italic
+            parts.push(`<ins><i>${pk}</i></ins>`);
+        } else {
+            // Render as just Underlined
+            parts.push(`<ins>${pk}</ins>`);
+        }
+    });
 
-    // Normal Attributes
+    // 2. Render Attributes
     table.attributes.forEach(attr => parts.push(attr));
 
-    // Foreign Keys
-    table.fks.forEach(fk => parts.push(`<i>${fk.name}</i>`)); // Italic for FK
+    // 3. Render Foreign Keys (ONLY if they weren't already rendered as PKs)
+    table.fks.forEach(fk => {
+        const isAlsoPK = table.pks.includes(fk.name);
+        if (!isAlsoPK) {
+            parts.push(`<i>${fk.name}</i>`);
+        }
+    });
 
     str += parts.join(", ");
     str += " )<br>";
@@ -172,8 +167,6 @@ function getConnectedEntities(relationship) {
         relationship.lines.forEach(line => {
             const otherEl = getOtherEnd(line, relationship);
             if (otherEl && otherEl.dataset.type === 'entity') {
-                // Determine Cardinality
-                // If line.startId is the relationship, we look at cardEnd for the Entity's cardinality
                 let card = "";
                 if (line.dataset.startId === relationship.id) {
                     card = line.querySelector('.end').innerText;
