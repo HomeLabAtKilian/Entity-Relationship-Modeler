@@ -100,7 +100,6 @@ document.addEventListener("DOMContentLoaded", () => {
         let boxStartX = 0;
         let boxStartY = 0;
 
-        // Prevent Context Menu during box selection or if Ctrl is held
         document.addEventListener("contextmenu", (e) => { 
             if (e.ctrlKey || isBoxSelecting) {
                 e.preventDefault(); 
@@ -109,18 +108,15 @@ document.addEventListener("DOMContentLoaded", () => {
         });
 
         viewport.addEventListener("mousedown", (e) => {
-            // Box Select Trigger: 
-            // 1. Ctrl + Right Click (Button 2)
-            // 2. Shift + Left Click (Button 0) - Alternative
+            // Box Select Trigger
             if ((e.ctrlKey && e.button === 2) || (e.shiftKey && e.button === 0)) {
                 e.preventDefault();
-                e.stopPropagation(); // Stop panning
+                e.stopPropagation();
                 
                 isBoxSelecting = true;
                 boxStartX = e.clientX;
                 boxStartY = e.clientY;
                 
-                // Reset box style
                 selectionBox.style.left = `${boxStartX}px`;
                 selectionBox.style.top = `${boxStartY}px`;
                 selectionBox.style.width = "0px";
@@ -129,8 +125,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 return;
             }
 
-            // Pan Trigger: Left Click on background
+            // Pan Trigger (Left Click on background)
             if (e.button === 0 && (e.target === viewport || e.target === contentLayer)) {
+                // --- NEW: Deselect if clicking background without modifiers ---
+                if (!e.ctrlKey && !e.shiftKey) {
+                    clearSelection();
+                }
+
                 state.isPanning = true;
                 state.startPanX = e.clientX - state.panX;
                 state.startPanY = e.clientY - state.panY;
@@ -144,7 +145,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 const currentX = e.clientX;
                 const currentY = e.clientY;
 
-                // Calculate dimensions allowing for negative drag (up/left)
                 const width = Math.abs(currentX - boxStartX);
                 const height = Math.abs(currentY - boxStartY);
                 const left = Math.min(currentX, boxStartX);
@@ -172,16 +172,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 
                 const boxRect = selectionBox.getBoundingClientRect();
                 
-                // Only select if the box has some size (prevents accidental clicks)
                 if (boxRect.width > 2 && boxRect.height > 2) {
-                    // If Ctrl is NOT held during release, clear previous selection
-                    // (Unless we are using the Shift-drag method, which usually implies adding)
                     if (!e.ctrlKey && !e.shiftKey) clearSelection();
 
                     document.querySelectorAll(".element").forEach(el => {
                         const elRect = el.getBoundingClientRect();
-                        
-                        // Check Intersection (AABB)
                         const intersects = !(
                             boxRect.right < elRect.left || 
                             boxRect.left > elRect.right || 

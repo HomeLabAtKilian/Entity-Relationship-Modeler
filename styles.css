@@ -319,3 +319,37 @@ input:checked + .slider:before { transform: translateX(20px); }
 #viewport.zoom-very-low .cardinality { display: none; }
 @keyframes pulse-green { 0% { box-shadow: 0 0 0 0 rgba(0, 255, 0, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(0, 255, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(0, 255, 0, 0); } }
 @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(255, 0, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); } }
+/* ... previous css ... */
+
+.element-text {
+    margin: 0; padding: 5px;
+    color: white; font-weight: 500; font-size: 14px;
+    pointer-events: none; outline: none;
+    width: 100%; line-height: 1.2; white-space: pre-wrap;
+    transition: opacity 0.2s ease;
+}
+
+/* --- IMPROVED SELECTION VISUALS --- */
+.element.selected {
+    /* Thicker, Cyan Border */
+    border: 3px solid #00ffff !important; 
+    /* Outer Glow + Inner Glow to make it pop on any background */
+    box-shadow: 0 0 15px #00ffff, inset 0 0 10px rgba(0, 255, 255, 0.3);
+    /* Ensure it sits above unselected items */
+    z-index: 100; 
+}
+
+.element.primary-key { 
+    border-color: #ffd700 !important; 
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.5); 
+}
+
+/* If an item is BOTH selected and PK, combine the styles (Cyan takes precedence for border, Gold for text) */
+.element.selected.primary-key {
+    border-color: #00ffff !important;
+    box-shadow: 0 0 15px #00ffff, 0 0 5px #ffd700;
+}
+
+.element.primary-key .element-text { text-decoration: underline; font-weight: bold; }
+
+/* ... rest of css ... */
