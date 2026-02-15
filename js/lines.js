@@ -53,15 +53,23 @@ export function createLine(startEl, endEl, savedData) {
     const endCard = createCardSpan(savedData ? savedData.cardEnd : "");
     endCard.classList.add("end");
 
-    // --- FIX: HIDE CARDINALITIES FOR ATTRIBUTES ---
+    // --- VISIBILITY LOGIC ---
     const type1 = startEl.dataset.type;
     const type2 = endEl.dataset.type;
-    const isAttributeConnection = type1.startsWith('attribute') || type2.startsWith('attribute') || type1 === 'label' || type2 === 'label';
-
-    if (isAttributeConnection) {
+    
+    // 1. Attributes/Labels: No cardinalities
+    if (type1.startsWith('attribute') || type2.startsWith('attribute') || type1 === 'label' || type2 === 'label') {
         startCard.style.display = 'none';
         endCard.style.display = 'none';
+    } 
+    // 2. Entity <-> Relationship: Only show cardinality near the Entity
+    else if (type1 === 'entity' && type2 === 'relationship') {
+        endCard.style.display = 'none'; // Hide box near Relationship
+    } 
+    else if (type1 === 'relationship' && type2 === 'entity') {
+        startCard.style.display = 'none'; // Hide box near Relationship
     }
+    // 3. Entity <-> Entity (Recursive/Direct): Keep both visible
 
     line.appendChild(startCard);
     line.appendChild(endCard);
@@ -117,17 +125,20 @@ export function positionLine(line, startEl, endEl) {
     const startCard = line.querySelector(".start");
     const endCard = line.querySelector(".end");
     
-    // Only calculate if visible
+    // Calculate offsets
+    const startOffset = getDistanceToEdge(startEl.offsetWidth, startEl.offsetHeight, angle);
+    const endOffset = getDistanceToEdge(endEl.offsetWidth, endEl.offsetHeight, angle + Math.PI); 
+    const padding = 25; 
+
+    // Position Start Label (if visible)
     if (startCard.style.display !== 'none') {
-        const startOffset = getDistanceToEdge(startEl.offsetWidth, startEl.offsetHeight, angle);
-        const endOffset = getDistanceToEdge(endEl.offsetWidth, endEl.offsetHeight, angle + Math.PI); 
-
-        const padding = 25; 
-
         startCard.style.left = `${startOffset + padding}px`;
         startCard.style.top = `-12px`; 
         startCard.style.transform = `rotate(${-angle * 180 / Math.PI}deg)`; 
+    }
 
+    // Position End Label (if visible)
+    if (endCard.style.display !== 'none') {
         endCard.style.left = `${length - (endOffset + padding)}px`;
         endCard.style.top = `-12px`;
         endCard.style.transform = `rotate(${-angle * 180 / Math.PI}deg)`;
