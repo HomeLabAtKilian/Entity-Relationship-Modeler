@@ -1,8 +1,12 @@
 import { state } from './state.js';
 import { handleLineClick, updateLines } from './lines.js';
 import { sanitizePaste } from './utils.js';
+import { saveState } from './history.js'; // Import History
 
 export function createElement(type, savedData = null) {
+    // Save state before creating a new element (unless loading from file)
+    if (!savedData) saveState();
+
     const contentLayer = document.getElementById("content-layer");
     const element = document.createElement("div");
     element.id = savedData ? savedData.id : `element-${state.elementCounter++}`;
@@ -20,6 +24,9 @@ export function createElement(type, savedData = null) {
     text.innerText = savedData ? savedData.text : (type === 'schema' ? '' : (type === 'isa' ? 'ISA' : type.charAt(0).toUpperCase() + type.slice(1)));
     text.setAttribute("spellcheck", "false");
     text.addEventListener("paste", sanitizePaste);
+    
+    // Save state when text editing starts (so we can undo the text change)
+    text.addEventListener("focus", () => saveState());
 
     switch (type) {
         case "entity":
@@ -73,7 +80,11 @@ export function createElement(type, savedData = null) {
 
     element.addEventListener("click", (e) => {
         e.stopPropagation();
-        if (state.deleteMode) { deleteElement(element); return; }
+        if (state.deleteMode) { 
+            saveState(); // Save before delete
+            deleteElement(element); 
+            return; 
+        }
         if (state.lineMode) { handleLineClick(element); return; }
 
         if (e.ctrlKey) {
@@ -95,6 +106,9 @@ export function createElement(type, savedData = null) {
         if (state.deleteMode || state.lineMode) return;
         if (e.button !== 0) return;
         e.stopPropagation();
+
+        // Save state before drag starts
+        saveState();
 
         if (e.ctrlKey) {
             if (!state.selectedElements.has(element)) {

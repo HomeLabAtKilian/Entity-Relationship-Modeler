@@ -3,6 +3,8 @@ import { createElement, deleteElement, clearSelection, addToSelection } from './
 import { createLine } from './lines.js';
 import { generateSchema } from './schema.js';
 import { generateSQL } from './sql.js';
+import { saveProject, loadDiagram, exportImage, clearCanvas } from './io.js'; // Import IO
+import { undo, redo, saveState } from './history.js'; // Import History
 
 document.addEventListener("DOMContentLoaded", () => {
     const viewport = document.getElementById("viewport");
@@ -26,9 +28,11 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("generate_sql").addEventListener("click", generateSQL);
 
         document.getElementById("toggle_pk").addEventListener("click", () => {
+            saveState(); // Save before toggle
             state.selectedElements.forEach(el => el.classList.toggle("primary-key"));
         });
         document.getElementById("toggle_weak").addEventListener("click", () => {
+            saveState(); // Save before toggle
             state.selectedElements.forEach(el => el.classList.toggle("weak"));
         });
 
@@ -63,9 +67,14 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("zoom_in").addEventListener("click", () => zoomCenter(0.1));
         document.getElementById("zoom_out").addEventListener("click", () => zoomCenter(-0.1));
         document.getElementById("zoom_reset").addEventListener("click", () => { state.scale = 1; state.panX = 0; state.panY = 0; updateTransform(); });
+        
+        // Updated IO Listeners
         document.getElementById("save_data").addEventListener("click", exportImage);
-        document.getElementById("save_json").addEventListener("click", saveDiagram);
-        document.getElementById("clear_canvas").addEventListener("click", clearCanvas);
+        document.getElementById("save_json").addEventListener("click", saveProject);
+        document.getElementById("clear_canvas").addEventListener("click", () => {
+            saveState();
+            clearCanvas();
+        });
         
         const fileInput = document.createElement("input");
         fileInput.type = "file";
@@ -74,7 +83,14 @@ document.addEventListener("DOMContentLoaded", () => {
         document.body.appendChild(fileInput);
         document.getElementById("load_data").addEventListener("click", () => fileInput.click());
         fileInput.addEventListener("change", (e) => {
-            if (e.target.files[0]) loadDiagram(e.target.files[0]);
+            if (e.target.files[0]) {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    saveState(); // Save current before loading new
+                    loadDiagram(ev.target.result);
+                };
+                reader.readAsText(e.target.files[0]);
+            }
             fileInput.value = '';
         });
     }
@@ -205,119 +221,34 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function setupKeyboardShortcuts() {
         document.addEventListener("keydown", (e) => {
+            // Undo / Redo
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                e.preventDefault();
+                undo();
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+                e.preventDefault();
+                redo();
+                return;
+            }
+
             if (e.key === "Delete" || e.key === "Backspace") {
                 if (document.activeElement.isContentEditable) return;
+                saveState(); // Save before delete
                 state.selectedElements.forEach(el => deleteElement(el));
                 state.selectedElements.clear();
             }
             if (e.key.toLowerCase() === "w") {
                 if (document.activeElement.isContentEditable) return;
+                saveState(); // Save before toggle
                 state.selectedElements.forEach(el => el.classList.toggle("weak"));
             }
             if (e.key.toLowerCase() === "p") {
                 if (document.activeElement.isContentEditable) return;
+                saveState(); // Save before toggle
                 state.selectedElements.forEach(el => el.classList.toggle("primary-key"));
             }
         });
-    }
-
-    function getDiagramJSON() {
-        const data = { elements: [], lines: [] };
-        document.querySelectorAll(".element").forEach(el => {
-            data.elements.push({
-                id: el.id,
-                type: el.dataset.type,
-                left: el.style.left,
-                top: el.style.top,
-                width: el.style.width,
-                height: el.style.height,
-                text: el.dataset.type === 'schema' ? el.querySelector(".element-text").innerHTML : el.querySelector(".element-text").innerText,
-                isWeak: el.classList.contains("weak"),
-                isPK: el.classList.contains("primary-key")
-            });
-        });
-        document.querySelectorAll(".line").forEach(l => {
-            let type = "";
-            if (l.classList.contains("double")) type = "double";
-            if (l.classList.contains("dashed")) type = "dashed";
-            data.lines.push({
-                startId: l.dataset.startId,
-                endId: l.dataset.endId,
-                cardStart: l.querySelector(".start").innerText,
-                cardEnd: l.querySelector(".end").innerText,
-                lineType: type
-            });
-        });
-        return JSON.stringify(data);
-    }
-
-    function saveDiagram() {
-        const blob = new Blob([getDiagramJSON()], { type: "application/json" });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = "er_diagram.json";
-        a.click();
-    }
-
-    function exportImage() {
-        const elements = document.querySelectorAll(".element");
-        if (elements.length === 0) { alert("Nothing to save!"); return; }
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        elements.forEach(el => {
-            const x = parseFloat(el.style.left); const y = parseFloat(el.style.top);
-            const w = el.offsetWidth; const h = el.offsetHeight;
-            if (x < minX) minX = x; if (y < minY) minY = y;
-            if (x + w > maxX) maxX = x + w; if (y + h > maxY) maxY = y + h;
-        });
-        const padding = 50;
-        const width = (maxX + padding) - (minX - padding);
-        const height = (maxY + padding) - (minY - padding);
-        const originalTransform = contentLayer.style.transform;
-        contentLayer.style.transform = "none";
-        html2canvas(contentLayer, {
-            x: minX - padding, y: minY - padding, width: width, height: height,
-            backgroundColor: "#1e1e1e", scale: 2, logging: false
-        }).then(canvas => {
-            contentLayer.style.transform = originalTransform;
-            const link = document.createElement('a');
-            link.download = 'er_diagram.png';
-            link.href = canvas.toDataURL();
-            link.click();
-        });
-    }
-
-    function loadDiagram(file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const data = JSON.parse(e.target.result);
-                clearCanvas();
-                let maxId = 0;
-                data.elements.forEach(d => {
-                    createElement(d.type, d);
-                    const parts = d.id.split('-');
-                    const idNum = parseInt(parts[parts.length - 1]);
-                    if (!isNaN(idNum) && idNum > maxId) maxId = idNum;
-                });
-                state.elementCounter = maxId + 1;
-                requestAnimationFrame(() => {
-                    setTimeout(() => {
-                        data.lines.forEach(l => {
-                            const s = document.getElementById(l.startId);
-                            const end = document.getElementById(l.endId);
-                            if (s && end) createLine(s, end, l);
-                        });
-                    }, 200);
-                });
-            } catch (err) { console.error(err); alert("Error loading file."); }
-        };
-        reader.readAsText(file);
-    }
-
-    function clearCanvas() {
-        contentLayer.innerHTML = "";
-        state.elementCounter = 0;
-        state.selectedElements.clear();
-        state.lineStart = null;
     }
 });

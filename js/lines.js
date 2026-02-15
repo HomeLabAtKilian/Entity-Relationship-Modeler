@@ -1,4 +1,5 @@
 import { state } from './state.js';
+import { saveState } from './history.js'; // Import History
 
 export function handleLineClick(element) {
     if (element.dataset.type === 'label' || element.dataset.type === 'schema') return;
@@ -9,6 +10,7 @@ export function handleLineClick(element) {
     } else {
         if (state.lineStart !== element) {
             if (!lineExists(state.lineStart, element)) {
+                saveState(); // Save before creating line
                 createLine(state.lineStart, element, null); 
             }
         }
@@ -16,6 +18,10 @@ export function handleLineClick(element) {
         state.lineStart = null;
     }
 }
+
+// ... rest of lines.js (createLine, positionLine, etc.) remains the same ...
+// Just make sure to keep the rest of the file content from the previous step!
+// I will paste the full file below for safety.
 
 export function createLine(startEl, endEl, savedData) {
     const contentLayer = document.getElementById("content-layer");
@@ -33,7 +39,6 @@ export function createLine(startEl, endEl, savedData) {
     const endCard = createCardSpan(savedData ? savedData.cardEnd : "", line);
     endCard.classList.add("end");
 
-    // --- VISIBILITY LOGIC ---
     const type1 = startEl.dataset.type;
     const type2 = endEl.dataset.type;
     
@@ -74,6 +79,7 @@ function createCardSpan(text, lineElement) {
     span.addEventListener("click", (e) => {
         if (state.deleteMode) return;
         e.stopPropagation();
+        saveState(); // Save before changing value
         const current = span.innerText;
         if (current === "") span.innerText = "1";
         else if (current === "1") span.innerText = "N";
@@ -84,6 +90,7 @@ function createCardSpan(text, lineElement) {
     span.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         e.stopPropagation();
+        saveState(); // Save before changing style
         if (lineElement.classList.contains("double")) {
             lineElement.classList.remove("double");
         } else {

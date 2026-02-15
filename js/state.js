@@ -6,6 +6,11 @@ export const state = {
     selectedElements: new Set(),
     viewMode: 'basic', 
     
+    // History
+    history: [],
+    redoStack: [],
+    isRestoring: false, // Flag to prevent saving while undoing
+    
     // Viewport
     scale: 1,
     panX: 0,
