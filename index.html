@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Er Diagram Maker</title>
+    <title>ER Diagram Maker</title>
     <link rel="stylesheet" href="./styles.css">
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 </head>
@@ -19,6 +19,7 @@
         </div>
         <div class="menu-group">
             <button id="toggle_pk" style="color: #ffd700; font-weight: bold;">Primary Key</button>
+            <button id="generate_schema" style="color: #00ffcc; font-weight: bold;">Relationsmodell</button>
         </div>
         <div class="menu-group">
             <button id="add_line">Line Tool</button>
@@ -39,7 +40,6 @@
 
     <!-- The Infinite Canvas Viewport -->
     <main id="viewport">
-        <!-- The Content Layer (Where items live) -->
         <div id="content-layer">
             <!-- Elements get injected here -->
         </div>
@@ -48,5 +48,5 @@
     </main>
 
 </body>
-<script src="./script.js"></script>
+<script type="module" src="./js/main.js"></script>
 </html>

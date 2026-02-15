@@ -1,0 +1,11 @@
+    that is correct, but the n and m should be lowercase
+
+    Dont call it Generate Schema, call it what it is.
+
+sorry i meant you can connect lines to labels this is not necessary.
+
+one additional feature i wanted to add was the ability to press ctrl and left mouseclick to select multiple elements to group move them.
+
+everything else is good, i like your approach.
+
+lets cut the files a bit apart though, there is no need to fill 3 files with like a thousand lines each.
