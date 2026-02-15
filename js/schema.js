@@ -18,7 +18,6 @@ export function generateSchema() {
             isWeak: entity.classList.contains('weak'),
             // Helper to get FULL PK (Own + Inherited)
             getFullPKs: function() {
-                // FIX: Removed space in 'isPartOfPK'
                 const inherited = this.fks.filter(fk => fk.isPartOfPK).map(fk => fk.name);
                 return [...inherited, ...this.pks];
             }
@@ -37,27 +36,53 @@ export function generateSchema() {
     });
 
     // --- PASS 1.5: Handle Weak Entities (Recursive Resolution) ---
+    // We loop until no more changes occur to handle chains (A -> B -> C)
     let changes = true;
-    while(changes) {
+    let loopCount = 0;
+    
+    while(changes && loopCount < 10) { // Safety break to prevent infinite loops
         changes = false;
+        loopCount++;
+
         schemaMap.forEach((table, id) => {
             if (table.isWeak) {
                 const entityEl = document.getElementById(id);
                 if (entityEl && entityEl.lines) {
                     entityEl.lines.forEach(line => {
                         const otherEl = getOtherEnd(line, entityEl);
+                        
+                        // Check if connected to a Weak Relationship
                         if (otherEl.dataset.type === 'relationship' && otherEl.classList.contains('weak')) {
                             const relConnections = getConnectedEntities(otherEl);
+                            
                             relConnections.forEach(conn => {
+                                // Don't look at self
                                 if (conn.entity.id !== id) {
                                     const ownerTable = schemaMap.get(conn.entity.id);
-                                    if (ownerTable) {
-                                        // Get Owner's FULL PKs
+                                    
+                                    // --- FIX: CHECK CARDINALITY DIRECTION ---
+                                    // We need to find our own cardinality and the owner's cardinality
+                                    // The Weak Entity (Child) should be 'N' (or 'M')
+                                    // The Owner (Parent) should be '1'
+                                    
+                                    const myConn = relConnections.find(c => c.entity.id === id);
+                                    const ownerConn = conn;
+
+                                    const myCard = myConn ? myConn.cardinality.toUpperCase() : '';
+                                    const ownerCard = ownerConn.cardinality.toUpperCase();
+
+                                    // Logic: Inherit ONLY if Owner is '1' and I am 'N' (or implied N)
+                                    // If both are N, or Owner is N, it's likely not the identifying parent in a chain
+                                    const isParent = (ownerCard === '1' || ownerCard === '');
+                                    
+                                    if (ownerTable && isParent) {
+                                        // Get Owner's FULL PKs (might include their own owner's PKs)
                                         const ownerPKs = ownerTable.pks.concat(
                                             ownerTable.fks.filter(f => f.isPartOfPK).map(f => f.name)
                                         );
 
                                         ownerPKs.forEach(pk => {
+                                            // Avoid duplicates
                                             if (!table.fks.some(f => f.name === pk)) {
                                                 table.fks.push({ 
                                                     name: pk, 
@@ -178,7 +203,10 @@ export function generateSchema() {
                 const sourcePKs = source.pks.concat(source.fks.filter(f => f.isPartOfPK).map(f => f.name));
                 sourcePKs.forEach(pk => {
                     const colName = prefix + pk;
-                    target.fks.push({ name: colName, source: source.name, isPartOfPK: false });
+                    // Only add if not already there (prevents duplication if multiple relationships exist)
+                    if (!target.fks.some(f => f.name === colName)) {
+                        target.fks.push({ name: colName, source: source.name, isPartOfPK: false });
+                    }
                 });
                 
                 relAttributes.forEach(attr => target.attributes.push(attr));
