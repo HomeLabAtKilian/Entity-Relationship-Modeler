@@ -66,3 +66,34 @@ input:checked + .slider:before { transform: translateX(20px); }
 #viewport.zoom-very-low .cardinality { display: none; }
 @keyframes pulse-green { 0% { box-shadow: 0 0 0 0 rgba(0, 255, 0, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(0, 255, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(0, 255, 0, 0); } }
 @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(255, 0, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); } }
+/* ... (Keep all previous CSS) ... */
+
+/* --- BUTTON STYLES --- */
+
+/* Primary Key Button */
+#toggle_pk {
+    color: #ffd700; /* Gold Text */
+    font-weight: bold;
+    border: 1px solid #555; /* Standard Border */
+}
+#toggle_pk:hover {
+    border-color: #ffd700; /* Gold Border on Hover */
+    background-color: #444;
+}
+
+/* Weak / Identifying Button */
+#toggle_weak {
+    color: #e0e0e0;
+    font-weight: bold;
+    /* 3px Double Border to mimic the Weak Entity symbol */
+    border: 3px double #555; 
+    padding: 6px; /* Adjust padding for thicker border */
+}
+
+#toggle_weak:hover {
+    border-color: #fff; /* White Border on Hover */
+    color: #fff;
+    background-color: #444;
+}
+
+/* ... (Rest of CSS remains the same) ... */
