@@ -6,7 +6,7 @@ A browser tool for drawing entity-relationship diagrams (Chen notation) and turn
 
 The app uses JavaScript modules, which browsers don't load from `file://`. Opening `index.html` by double-clicking won't work. Use one of these instead:
 
-- **Vercel** (how it is hosted): import the repository with the "Other" framework preset. There is no build step and no output directory to set; Vercel serves the files as they are.
+- **GitHub Pages** (easiest for classmates): enable Pages for the repository and open the published URL.
 - **Local web server**: in the project folder, run
 
   ```
