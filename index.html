@@ -5,21 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ER Diagram Maker</title>
     <link rel="stylesheet" href="./styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
+    <script type="module" src="./js/main.js"></script>
 </head>
 <body>
 
-    <!-- UI Layer -->
     <div id="menu-bar">
-        <!-- View Switcher -->
         <div class="menu-group">
             <div class="toggle-container">
-                <label class="switch-label">Basic</label>
+                <label class="switch-label" for="view_toggle">Basic</label>
                 <label class="switch">
                     <input type="checkbox" id="view_toggle">
                     <span class="slider round"></span>
                 </label>
-                <label class="switch-label">Advanced</label>
+                <label class="switch-label" for="view_toggle">Advanced</label>
             </div>
         </div>
 
@@ -28,27 +27,42 @@
             <button id="add_attribute">Attribute</button>
             <button id="add_relationship">Relationship</button>
             <button id="add_label">Label</button>
-            
-            <!-- Advanced Features (Hidden by default) -->
-            <button id="add_attr_multi" class="advanced-feature" style="display:none;">Multivalued Attr.</button>
-            <button id="add_attr_derived" class="advanced-feature" style="display:none;">Derived Attr.</button>
-            <button id="add_isa" class="advanced-feature" style="display:none;">ISA (Generalization)</button>
+
+            <button id="add_attr_multi" class="advanced-feature" hidden>Multivalued Attr.</button>
+            <button id="add_attr_derived" class="advanced-feature" hidden>Derived Attr.</button>
+            <button id="add_isa" class="advanced-feature" hidden>ISA (Generalization)</button>
         </div>
 
         <div class="menu-group">
-            <!-- Fixed Buttons: Removed inline styles -->
-            <button id="toggle_pk">Primary Key</button>
-            <button id="toggle_weak">Weak / Identifying</button>
+            <button id="toggle_pk" title="Mark the selected attributes as primary key (P)">Primary Key</button>
+            <button id="toggle_fk" title="Mark the selected attributes as foreign key (F)">Foreign Key</button>
+            <button id="toggle_weak" title="Mark the selected entity / relationship as weak / identifying (W)">Weak / Identifying</button>
         </div>
 
         <div class="menu-group">
-            <button id="generate_schema" style="color: #00ffcc; font-weight: bold;">Relationsmodell</button>
-            <button id="generate_sql" class="advanced-feature" style="display:none; color: #ff99cc; font-weight: bold;">Export SQL</button>
+            <label class="select-label" for="notation_select">Cardinality notation</label>
+            <select id="notation_select">
+                <option value="chen">Chen (1 / N / M)</option>
+                <option value="mc">Modified Chen (1 / C / M / MC)</option>
+                <option value="minmax">(min,max)</option>
+            </select>
         </div>
 
         <div class="menu-group">
-            <button id="add_line">Line Tool</button>
-            <button id="delete_mode" class="danger-btn">Delete Tool</button>
+            <button id="generate_schema">Relationsmodell</button>
+            <div class="sql-row advanced-feature" hidden>
+                <select id="sql_dialect" aria-label="SQL dialect">
+                    <option value="mysql">MySQL</option>
+                    <option value="postgres">PostgreSQL</option>
+                    <option value="sqlite">SQLite</option>
+                </select>
+                <button id="generate_sql">Export SQL</button>
+            </div>
+        </div>
+
+        <div class="menu-group">
+            <button id="add_line" title="Connect two elements (L)">Line Tool</button>
+            <button id="delete_mode" class="danger-btn" title="Click elements or lines to delete them">Delete Tool</button>
         </div>
 
         <div class="menu-group">
@@ -59,9 +73,13 @@
 
         <div class="menu-group">
             <button id="save_data">Export Image</button>
-            <button id="save_json">Save Project</button>
+            <button id="save_json" title="Ctrl+S">Save Project</button>
             <button id="load_data">Load</button>
             <button id="clear_canvas">Clear</button>
+        </div>
+
+        <div class="menu-group">
+            <button id="toggle_help" title="?">Help</button>
         </div>
     </div>
 
@@ -70,6 +88,45 @@
         <div id="selection-box" hidden></div>
     </main>
 
+    <aside id="warnings-panel" hidden>
+        <div class="panel-head">
+            <b>Hints for your diagram</b>
+            <button id="warnings_close" aria-label="Close">×</button>
+        </div>
+        <ul id="warnings-list"></ul>
+    </aside>
+
+    <aside id="help-panel" hidden>
+        <div class="panel-head">
+            <b>Help</b>
+            <button id="help_close" aria-label="Close">×</button>
+        </div>
+        <h4>Elements</h4>
+        <ul>
+            <li><b>Double-click</b> an element to edit its text</li>
+            <li><b>Drag</b> to move, <kbd>Ctrl</kbd>/<kbd>Shift</kbd>+click to select several</li>
+            <li><kbd>Shift</kbd>+drag on the canvas: box selection</li>
+            <li><kbd>P</kbd> primary key (underlined), <kbd>F</kbd> foreign key (overlined), <kbd>W</kbd> weak / identifying</li>
+            <li><kbd>Delete</kbd> deletes the selection, <kbd>Ctrl</kbd>+<kbd>A</kbd> selects everything</li>
+        </ul>
+        <h4>Lines</h4>
+        <ul>
+            <li><kbd>L</kbd> or Line Tool, then click two elements</li>
+            <li>Click a cardinality to cycle through values, <kbd>Shift</kbd>+click to type any value</li>
+            <li><b>Right-click</b> a line: double line (total participation)</li>
+            <li><b>Double-click</b> a line: role name</li>
+            <li>Recursive relationship: connect the entity to the relationship twice</li>
+            <li>Delete Tool, then click a line to remove it</li>
+        </ul>
+        <h4>General</h4>
+        <ul>
+            <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo, <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo, <kbd>Ctrl</kbd>+<kbd>S</kbd> save project</li>
+            <li>Mouse wheel zooms, dragging the canvas pans, <kbd>Esc</kbd> cancels the current tool</li>
+            <li>Your work is saved automatically in this browser</li>
+        </ul>
+    </aside>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+
 </body>
-<script type="module" src="./js/main.js"></script>
 </html>

@@ -1,4 +1,5 @@
 * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; user-select: none; }
+[hidden] { display: none !important; }
 body { background-color: #1e1e1e; margin: 0; overflow: hidden; width: 100vw; height: 100vh; }
 
 /* --- Menu --- */
@@ -11,6 +12,21 @@ button:hover { background-color: #505050; }
 button.active { background-color: #007acc; border-color: #0090ff; color: white; }
 #delete_mode { background-color: #96261f; color: white; border: 1px solid #c0392b; }
 #delete_mode.delete-active { background-color: #ff0000; animation: pulse-red 1.5s infinite; }
+
+select { background-color: #3d3d3d; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; padding: 6px; font-size: 13px; }
+.select-label { color: #aaa; font-size: 11px; }
+.sql-row { display: flex; gap: 5px; }
+.sql-row select { flex: 1; min-width: 0; }
+
+#generate_schema { color: #00ffcc; font-weight: bold; }
+#generate_sql { color: #ff99cc; font-weight: bold; }
+
+#toggle_pk { color: #ffd700; font-weight: bold; text-decoration: underline; }
+#toggle_pk:hover { border-color: #ffd700; background-color: #444; }
+#toggle_fk { color: #c38bff; font-weight: bold; text-decoration: overline; }
+#toggle_fk:hover { border-color: #c38bff; background-color: #444; }
+#toggle_weak { color: #e0e0e0; font-weight: bold; border: 3px double #555; padding: 6px; }
+#toggle_weak:hover { border-color: #fff; color: #fff; background-color: #444; }
 
 /* Toggle Switch */
 .toggle-container { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 5px; }
@@ -31,13 +47,24 @@ input:checked + .slider:before { transform: translateX(20px); }
 /* --- Elements --- */
 .element { position: absolute; display: flex; justify-content: center; align-items: center; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: pointer; z-index: 10; border: 2px solid transparent; transition: transform 0.2s ease; }
 .element-text { margin: 0; padding: 5px; color: white; font-weight: 500; font-size: 14px; pointer-events: none; outline: none; width: 100%; line-height: 1.2; white-space: pre-wrap; text-align: center; }
+.element-text:focus { pointer-events: auto; cursor: text; }
+.element-text:focus, .element-text:focus * { user-select: text; -webkit-user-select: text; }
 
-/* Selection Visuals */
-.element.selected { border: 3px solid #00ffff !important; box-shadow: 0 0 15px #00ffff, inset 0 0 10px rgba(0, 255, 255, 0.3); z-index: 100; }
+/* Keys: primary key = underline, foreign key = overline */
 .element.primary-key { border-color: #ffd700 !important; box-shadow: 0 0 10px rgba(255, 215, 0, 0.5); }
-.element.selected.primary-key { border-color: #00ffff !important; box-shadow: 0 0 15px #00ffff, 0 0 5px #ffd700; }
 .element.primary-key .element-text { text-decoration: underline; font-weight: bold; }
+.element.foreign-key { border-color: #c38bff !important; box-shadow: 0 0 10px rgba(195, 139, 255, 0.5); }
+.element.foreign-key .element-text { text-decoration: overline; font-weight: bold; }
+.element.primary-key.foreign-key { border-color: #ffd700 !important; box-shadow: 0 0 10px rgba(255, 215, 0, 0.5), 0 0 14px rgba(195, 139, 255, 0.5); }
+.element.primary-key.foreign-key .element-text { text-decoration: underline overline; }
+
+/* Selection (after the key rules so it wins) */
+.element.selected { border: 3px solid #00ffff !important; box-shadow: 0 0 15px #00ffff, inset 0 0 10px rgba(0, 255, 255, 0.3); z-index: 100; }
+.element.selected.primary-key { border-color: #00ffff !important; box-shadow: 0 0 15px #00ffff, 0 0 5px #ffd700; }
+.element.selected.foreign-key { border-color: #00ffff !important; box-shadow: 0 0 15px #00ffff, 0 0 5px #c38bff; }
 .element.line-start { border: 2px dashed #00ff00; animation: pulse-green 1s infinite; }
+body.line-mode .element { cursor: crosshair; }
+body.delete-mode .element:hover { outline: 2px solid #ff4040; }
 
 /* Advanced Styles */
 .element.weak { border: 4px double white !important; }
@@ -50,50 +77,43 @@ input:checked + .slider:before { transform: translateX(20px); }
 
 /* Schema Box */
 .element.schema-box { background-color: #f0f0f0 !important; color: black !important; border: 1px solid #999; border-radius: 4px; align-items: flex-start; text-align: left; padding: 10px; width: 300px; height: auto; min-height: 100px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
-.element.schema-box .element-text { color: black; pointer-events: auto; text-align: left; height: 100%; }
+.element.schema-box .element-text { color: black; pointer-events: auto; text-align: left; height: 100%; line-height: 1.7; }
+.schema-box .pk { text-decoration: underline; }
+.schema-box .fk { text-decoration: overline; }
+.schema-box .pk.fk { text-decoration: underline overline; }
 
-/* Lines */
-.line { position: absolute; pointer-events: auto; cursor: pointer; border-bottom: 2px solid #ccc; height: 2px; transform-origin: 0 0; z-index: 5; overflow: visible; }
-.line.double { border-bottom: 4px double #ccc; }
-.line.dashed { border-bottom: 2px dashed #ccc; }
-.cardinality { color: #00ff00; font-size: 14px; font-weight: bold; background-color: #1e1e1e; padding: 2px 6px; border-radius: 4px; pointer-events: auto; cursor: pointer; border: 1px solid #444; position: absolute; z-index: 20; transform-origin: center center; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+/* --- Lines ---
+   The .line box is a 14px tall transparent hit area; the visible stroke is
+   drawn by ::after in its middle. */
+.line { position: absolute; height: 14px; transform-origin: 0 50%; z-index: 5; cursor: pointer; }
+.line::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 2px solid #ccc; transform: translateY(-50%); }
+.line.double::after { border-top: 6px double #ccc; }
+.line:hover::after { border-top-color: #fff; }
+body.delete-mode .line:hover::after { border-top-color: #ff4040; }
+.cardinality { position: absolute; top: 50%; z-index: 20; color: #00ff00; font-size: 14px; font-weight: bold; background-color: #1e1e1e; padding: 2px 6px; border-radius: 4px; cursor: pointer; border: 1px solid #444; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.5); transform-origin: center center; }
+.role-label { position: absolute; z-index: 20; color: #bbb; font-size: 12px; font-style: italic; white-space: nowrap; pointer-events: none; transform-origin: center center; }
 
-/* LOD */
+/* --- Level of detail when zoomed out --- */
 #viewport.zoom-low .element-text { opacity: 0; }
 #viewport.zoom-low .element { border-width: 3px; box-shadow: none; }
+#viewport.zoom-low .role-label { display: none; }
 #viewport.zoom-very-low .element { transform: scale(1.5) !important; border: 2px solid rgba(255,255,255,0.9); z-index: 100; }
 #viewport.zoom-very-low .line { opacity: 0.3; }
 #viewport.zoom-very-low .cardinality { display: none; }
+
+/* --- Panels & toast --- */
+#warnings-panel, #help-panel { position: fixed; right: 20px; z-index: 1001; background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #444; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); padding: 10px 14px; width: 380px; max-width: calc(100vw - 40px); font-size: 13px; overflow-y: auto; }
+#warnings-panel { bottom: 20px; max-height: 40vh; border-left: 4px solid #ffb300; }
+#help-panel { top: 20px; max-height: calc(100vh - 40px); }
+#warnings-panel ul, #help-panel ul { margin: 0; padding-left: 18px; }
+#warnings-panel li, #help-panel li { margin: 4px 0; }
+#help-panel h4 { margin: 10px 0 4px; color: #fff; }
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; }
+.panel-head button { padding: 2px 8px; }
+kbd { background-color: #444; border: 1px solid #666; border-radius: 3px; padding: 0 4px; font-size: 12px; }
+
+#toast { position: fixed; bottom: 24px; left: 50%; transform: translate(-50%, 20px); opacity: 0; transition: opacity 0.2s, transform 0.2s; background-color: #333; color: #fff; border: 1px solid #555; padding: 8px 14px; border-radius: 6px; pointer-events: none; z-index: 2000; font-size: 13px; max-width: calc(100vw - 40px); }
+#toast.visible { opacity: 1; transform: translate(-50%, 0); }
+
 @keyframes pulse-green { 0% { box-shadow: 0 0 0 0 rgba(0, 255, 0, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(0, 255, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(0, 255, 0, 0); } }
 @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(255, 0, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); } }
-/* ... (Keep all previous CSS) ... */
-
-/* --- BUTTON STYLES --- */
-
-/* Primary Key Button */
-#toggle_pk {
-    color: #ffd700; /* Gold Text */
-    font-weight: bold;
-    border: 1px solid #555; /* Standard Border */
-}
-#toggle_pk:hover {
-    border-color: #ffd700; /* Gold Border on Hover */
-    background-color: #444;
-}
-
-/* Weak / Identifying Button */
-#toggle_weak {
-    color: #e0e0e0;
-    font-weight: bold;
-    /* 3px Double Border to mimic the Weak Entity symbol */
-    border: 3px double #555; 
-    padding: 6px; /* Adjust padding for thicker border */
-}
-
-#toggle_weak:hover {
-    border-color: #fff; /* White Border on Hover */
-    color: #fff;
-    background-color: #444;
-}
-
-/* ... (Rest of CSS remains the same) ... */

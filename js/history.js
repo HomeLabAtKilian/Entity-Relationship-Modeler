@@ -1,57 +1,84 @@
 import { state } from './state.js';
 import { getDiagramJSON, loadDiagram } from './io.js';
 
-export function saveState() {
-    if (state.isRestoring) return; // Don't save while undoing
+// The history stores snapshots taken AFTER each change; the last entry is
+// always the current diagram. Recording an unchanged diagram is a no-op, so
+// plain clicks never create empty undo steps or wipe the redo stack.
 
-    const currentJSON = getDiagramJSON();
-    
-    // Avoid duplicates (e.g. clicking without moving)
-    if (state.history.length > 0 && state.history[state.history.length - 1] === currentJSON) {
-        return;
-    }
+const MAX_HISTORY = 50;
+const AUTOSAVE_KEY = 'er-modeler:autosave';
+const AUTOSAVE_DELAY = 400;
 
-    state.history.push(currentJSON);
-    
-    // Limit history size to 50 steps to save memory
-    if (state.history.length > 50) state.history.shift();
-    
-    // Clear redo stack because we branched off
+let autosaveTimer = null;
+let pendingAutosave = null;
+let autosaveWorks = true;
+
+export function recordState() {
+    const current = getDiagramJSON();
+    const { history } = state;
+    if (history.length && history[history.length - 1] === current) return;
+
+    history.push(current);
+    if (history.length > MAX_HISTORY + 1) history.shift();
+    state.redoStack = [];
+    scheduleAutosave(current);
+}
+
+export function resetHistory() {
+    state.history = [getDiagramJSON()];
     state.redoStack = [];
 }
 
 export function undo() {
-    if (state.history.length === 0) return;
+    recordState(); // capture any change that was not recorded yet
+    if (state.history.length < 2) return;
 
-    state.isRestoring = true;
-
-    // 1. Save current state to Redo Stack
-    const currentJSON = getDiagramJSON();
-    state.redoStack.push(currentJSON);
-
-    // 2. Pop previous state
-    const previousJSON = state.history.pop();
-    
-    // 3. Load it
-    loadDiagram(previousJSON);
-
-    state.isRestoring = false;
+    state.redoStack.push(state.history.pop());
+    restore(state.history[state.history.length - 1]);
 }
 
 export function redo() {
-    if (state.redoStack.length === 0) return;
+    if (!state.redoStack.length) return;
 
-    state.isRestoring = true;
+    state.history.push(state.redoStack.pop());
+    restore(state.history[state.history.length - 1]);
+}
 
-    // 1. Save current state to History
-    const currentJSON = getDiagramJSON();
-    state.history.push(currentJSON);
+function restore(json) {
+    loadDiagram(json, { quiet: true });
+    // Store the exact serialization of what is now on screen, so the next
+    // recordState() comparison is reliable.
+    const actual = getDiagramJSON();
+    state.history[state.history.length - 1] = actual;
+    scheduleAutosave(actual);
+}
 
-    // 2. Pop next state
-    const nextJSON = state.redoStack.pop();
+// --- Autosave (browser localStorage) ---
 
-    // 3. Load it
-    loadDiagram(nextJSON);
+function scheduleAutosave(json) {
+    pendingAutosave = json;
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(flushAutosave, AUTOSAVE_DELAY);
+}
 
-    state.isRestoring = false;
+/** Writes a pending autosave immediately. Returns false if storage is unavailable. */
+export function flushAutosave() {
+    clearTimeout(autosaveTimer);
+    if (pendingAutosave === null) return autosaveWorks;
+    try {
+        localStorage.setItem(AUTOSAVE_KEY, pendingAutosave);
+        pendingAutosave = null;
+        autosaveWorks = true;
+    } catch {
+        autosaveWorks = false;
+    }
+    return autosaveWorks;
+}
+
+export function readAutosave() {
+    try {
+        return localStorage.getItem(AUTOSAVE_KEY);
+    } catch {
+        return null;
+    }
 }

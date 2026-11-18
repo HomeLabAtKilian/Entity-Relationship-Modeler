@@ -1,347 +1,453 @@
-import { createElement } from './elements.js';
+import { state } from './state.js';
+import { getOtherEnd } from './lines.js';
+import { getCenter, escapeHTML } from './utils.js';
 
-export function generateSchema() {
-    const schemaMap = new Map();
-    const intermediateTables = [];
-    const entities = document.querySelectorAll('.element[data-type="entity"]');
-    const relationships = document.querySelectorAll('.element[data-type="relationship"]');
-    const isaTriangles = document.querySelectorAll('.element[data-type="isa"]');
+/*
+ * Translates the ER diagram on the canvas into a relational model.
+ *
+ * Result: { tables, warnings, sqlNotes }
+ *   table = { name, kind: 'entity' | 'multi' | 'relationship',
+ *             columns: [{ name, isPK, isFK, notNull }],
+ *             foreignKeys: [{ columns, refTable, refColumns }],
+ *             uniques: [[column names]], key: [column names] }
+ */
+export function buildRelationalModel() {
+    const warnings = [];
+    const sqlNotes = [];
+    const warn = msg => { if (!warnings.includes(msg)) warnings.push(msg); };
 
-    // --- PASS 1: Build Base Entities ---
-    entities.forEach(entity => {
-        const data = getEntityData(entity);
-        schemaMap.set(entity.id, {
-            name: data.name,
-            pks: data.pks, // Own PKs
-            attributes: data.attributes,
-            fks: [],
-            isWeak: entity.classList.contains('weak'),
-            // Helper to get FULL PK (Own + Inherited)
-            getFullPKs: function() {
-                const inherited = this.fks.filter(fk => fk.isPartOfPK).map(fk => fk.name);
-                return [...inherited, ...this.pks];
+    const all = [...document.querySelectorAll('#content-layer > .element')];
+    const ofType = type => all.filter(el => el.dataset.type === type);
+    const entities = ofType('entity');
+    const relationships = ofType('relationship');
+    const isas = ofType('isa');
+
+    const tables = [];
+    const entityTables = new Map(); // entity element -> table
+
+    const createTable = (rawName, kind, fallback) => {
+        const base = rawName || fallback;
+        let name = base;
+        for (let i = 2; tables.some(t => t.name.toLowerCase() === name.toLowerCase()); i++) name = `${base}_${i}`;
+        if (name !== base) warn(`The name "${base}" is used more than once – the table was renamed to "${name}".`);
+        const table = { name, kind, columns: [], foreignKeys: [], uniques: [], key: [], multi: [], isWeak: false };
+        tables.push(table);
+        return table;
+    };
+
+    // --- 1. One table per entity with its own attributes ---
+    for (const ent of entities) {
+        const name = textOf(ent);
+        if (!name) warn('An entity has no name.');
+        const table = createTable(name, 'entity', 'Entity');
+        table.isWeak = ent.classList.contains('weak');
+
+        for (const attr of collectAttributes(ent)) {
+            if (attr.derived) continue;
+            if (attr.multi) { table.multi.push(attr); continue; }
+            addColumn(table, [attr.name], { isPK: attr.isPK, isFK: attr.isFK, manualFK: attr.isFK });
+        }
+        entityTables.set(ent, table);
+    }
+
+    for (const ent of entities) {
+        for (const other of neighbours(ent)) {
+            if (other.dataset.type !== 'entity') continue;
+            const pair = [textOf(ent), textOf(other)].sort();
+            warn(`"${pair[0]}" and "${pair[1]}" are connected directly – connect entities through a relationship.`);
+        }
+    }
+
+    // --- 2. Who inherits whose key (weak entity owners, ISA supertypes) ---
+    const parents = new Map(); // table -> [{ table, kind }]
+    const addParent = (child, parent, kind) => {
+        if (!child || !parent || child === parent) return;
+        if (!parents.has(child)) parents.set(child, []);
+        if (!parents.get(child).some(p => p.table === parent)) parents.get(child).push({ table: parent, kind });
+    };
+
+    const identifying = new Set();
+    for (const rel of relationships) {
+        if (!rel.classList.contains('weak')) continue;
+        const conns = connectionsOf(rel);
+        const weakConns = conns.filter(c => c.entity.classList.contains('weak'));
+        if (!weakConns.length) {
+            warn(`Identifying relationship "${textOf(rel) || 'Relationship'}" is not connected to a weak entity.`);
+            continue;
+        }
+        identifying.add(rel);
+        for (const weak of weakConns) {
+            for (const owner of conns) {
+                // The weak entity belongs to exactly one owner
+                if (owner.entity !== weak.entity && isSingle(weak, owner)) {
+                    addParent(entityTables.get(weak.entity), entityTables.get(owner.entity), 'weak');
+                }
             }
-        });
-        
-        // Multivalued Attributes -> New Table
-        data.multiAttributes.forEach(multi => {
-            intermediateTables.push({
-                name: `${data.name}_${multi}`,
-                columns: [
-                    ...data.pks.map(pk => ({ name: pk, isPK: true, isFK: true, source: data.name })),
-                    { name: multi, isPK: true, isFK: false }
-                ]
+        }
+    }
+    for (const table of entityTables.values()) {
+        if (table.isWeak && !parents.has(table)) {
+            warn(`Weak entity "${table.name}" has no owner – connect it to an identifying (double) relationship with cardinality 1 on the owner side.`);
+        }
+    }
+
+    for (const isa of isas) {
+        const connected = [...new Set(connectionsOf(isa).map(c => c.entity))];
+        if (connected.length < 2) {
+            warn('An ISA triangle needs a supertype above it and at least one subtype below it.');
+            continue;
+        }
+        // The triangle points down: the supertype sits above it
+        const center = getCenter(isa);
+        const above = connected.filter(el => getCenter(el).y < center.y);
+        const distance = el => Math.hypot(getCenter(el).x - center.x, getCenter(el).y - center.y);
+        let superEl;
+        if (above.length) {
+            superEl = above.reduce((best, el) => (distance(el) < distance(best) ? el : best));
+        } else {
+            superEl = connected.reduce((best, el) => (getCenter(el).y < getCenter(best).y ? el : best));
+            warn(`ISA: no entity is placed above the triangle – "${textOf(superEl)}" is used as the supertype.`);
+        }
+        connected
+            .filter(el => el !== superEl)
+            .forEach(sub => addParent(entityTables.get(sub), entityTables.get(superEl), 'isa'));
+    }
+
+    // --- 3. Resolve full primary keys (recursively, any depth) ---
+    const keyState = new Map();
+    const resolveKey = table => {
+        const status = keyState.get(table);
+        if (status === 'done') return table.key;
+        if (status === 'visiting') {
+            warn(`Circular key dependency involving "${table.name}" (weak entities / ISA).`);
+            return table.columns.filter(c => c.isPK).map(c => c.name);
+        }
+        keyState.set(table, 'visiting');
+        for (const parent of parents.get(table) || []) {
+            const parentKey = resolveKey(parent.table);
+            addForeignKey(table, parent.table, parentKey, { asPK: true, notNull: true, mergePK: parent.kind === 'isa' });
+        }
+        table.key = table.columns.filter(c => c.isPK).map(c => c.name);
+        keyState.set(table, 'done');
+        if (!table.key.length) warn(`Entity "${table.name}" has no primary key – select an attribute and press "Primary Key" (P).`);
+        return table.key;
+    };
+    entityTables.forEach(table => resolveKey(table));
+
+    // --- 4. Multivalued attributes -> own table ---
+    for (const table of [...entityTables.values()]) {
+        for (const multi of table.multi) {
+            const mt = createTable(`${table.name}_${multi.name}`, 'multi', 'Multivalued');
+            addForeignKey(mt, table, table.key, { asPK: true, notNull: true });
+            multi.parts.forEach(part => addColumn(mt, [part.name], { isPK: true }));
+            mt.key = mt.columns.filter(c => c.isPK).map(c => c.name);
+        }
+    }
+
+    // --- 5. Relationships ---
+    for (const rel of relationships) {
+        const relName = textOf(rel) || 'Relationship';
+        const conns = connectionsOf(rel).filter(c => entityTables.has(c.entity));
+        const attrs = flattenRelationshipAttributes(collectAttributes(rel), relName, warn);
+
+        if (identifying.has(rel)) {
+            // Attributes of an identifying relationship belong to the weak entity
+            conns
+                .filter(c => c.entity.classList.contains('weak'))
+                .forEach(c => attrs.forEach(a => addColumn(entityTables.get(c.entity), [a.name, `${relName}_${a.name}`], {})));
+            continue;
+        }
+
+        if (conns.length < 2) {
+            warn(`Relationship "${relName}" is connected to ${conns.length ? 'only one entity' : 'no entity'} – it was ignored.`);
+            continue;
+        }
+        if (conns.some(c => !c.card)) warn(`Relationship "${relName}" has a missing cardinality – it was treated as 1.`);
+
+        if (conns.length > 2) {
+            const table = createTable(relName, 'relationship', 'Relationship');
+            const prefixes = participantPrefixes(conns, entityTables);
+            conns.forEach((c, i) => {
+                const ref = entityTables.get(c.entity);
+                addForeignKey(table, ref, ref.key, { asPK: true, notNull: true, prefix: prefixes[i], altPrefix: relName });
             });
-        });
-    });
-
-    // --- PASS 1.5: Handle Weak Entities (Recursive Resolution) ---
-    // We loop until no more changes occur to handle chains (A -> B -> C)
-    let changes = true;
-    let loopCount = 0;
-    
-    while(changes && loopCount < 10) { // Safety break to prevent infinite loops
-        changes = false;
-        loopCount++;
-
-        schemaMap.forEach((table, id) => {
-            if (table.isWeak) {
-                const entityEl = document.getElementById(id);
-                if (entityEl && entityEl.lines) {
-                    entityEl.lines.forEach(line => {
-                        const otherEl = getOtherEnd(line, entityEl);
-                        
-                        // Check if connected to a Weak Relationship
-                        if (otherEl.dataset.type === 'relationship' && otherEl.classList.contains('weak')) {
-                            const relConnections = getConnectedEntities(otherEl);
-                            
-                            relConnections.forEach(conn => {
-                                // Don't look at self
-                                if (conn.entity.id !== id) {
-                                    const ownerTable = schemaMap.get(conn.entity.id);
-                                    
-                                    // --- FIX: CHECK CARDINALITY DIRECTION ---
-                                    // We need to find our own cardinality and the owner's cardinality
-                                    // The Weak Entity (Child) should be 'N' (or 'M')
-                                    // The Owner (Parent) should be '1'
-                                    
-                                    const myConn = relConnections.find(c => c.entity.id === id);
-                                    const ownerConn = conn;
-
-                                    const myCard = myConn ? myConn.cardinality.toUpperCase() : '';
-                                    const ownerCard = ownerConn.cardinality.toUpperCase();
-
-                                    // Logic: Inherit ONLY if Owner is '1' and I am 'N' (or implied N)
-                                    // If both are N, or Owner is N, it's likely not the identifying parent in a chain
-                                    const isParent = (ownerCard === '1' || ownerCard === '');
-                                    
-                                    if (ownerTable && isParent) {
-                                        // Get Owner's FULL PKs (might include their own owner's PKs)
-                                        const ownerPKs = ownerTable.pks.concat(
-                                            ownerTable.fks.filter(f => f.isPartOfPK).map(f => f.name)
-                                        );
-
-                                        ownerPKs.forEach(pk => {
-                                            // Avoid duplicates
-                                            if (!table.fks.some(f => f.name === pk)) {
-                                                table.fks.push({ 
-                                                    name: pk, 
-                                                    source: ownerTable.name, 
-                                                    isPartOfPK: true 
-                                                });
-                                                changes = true;
-                                            }
-                                        });
-                                    }
-                                }
-                            });
-                        }
-                    });
-                }
-            }
-        });
-    }
-
-    // --- PASS 1.8: Handle ISA ---
-    isaTriangles.forEach(isa => {
-        const connected = getConnectedEntities(isa);
-        if (connected.length >= 2) {
-            connected.sort((a, b) => parseFloat(a.entity.style.top) - parseFloat(b.entity.style.top));
-            const superEntityEl = connected[0].entity;
-            const subEntitiesData = connected.slice(1);
-            const superTable = schemaMap.get(superEntityEl.id);
-
-            if (superTable) {
-                subEntitiesData.forEach(conn => {
-                    const subTable = schemaMap.get(conn.entity.id);
-                    if (subTable) {
-                        superTable.pks.forEach(pk => {
-                            if (!subTable.pks.includes(pk) && !subTable.fks.some(f => f.name === pk)) {
-                                subTable.fks.push({ 
-                                    name: pk, 
-                                    source: superTable.name, 
-                                    isPartOfPK: true 
-                                });
-                            }
-                        });
-                    }
-                });
-            }
+            attrs.forEach(a => addColumn(table, [a.name], {}));
+            table.key = table.columns.filter(c => c.isPK).map(c => c.name);
+            continue;
         }
-    });
 
-    // --- PASS 2: Process Relationships ---
-    relationships.forEach(rel => {
-        const relName = rel.innerText.trim();
-        const connections = getConnectedEntities(rel);
-        const relAttributes = getConnectedAttributes(rel);
+        const [a, b] = conns;
+        const ta = entityTables.get(a.entity);
+        const tb = entityTables.get(b.entity);
+        const recursive = ta === tb;
+        if (recursive && (!a.role || !b.role)) {
+            warn(`Recursive relationship "${relName}": give both lines a role name (double-click a line) to get clear column names.`);
+        }
 
-        if (connections.length > 2) {
-            // Ternary -> New Table
-            const newTable = { name: relName, columns: [] };
-            relAttributes.forEach(attr => newTable.columns.push({ name: attr, isPK: false, isFK: false }));
+        const aSingle = isSingle(a, b);
+        const bSingle = isSingle(b, a);
 
-            connections.forEach(conn => {
-                const ent = schemaMap.get(conn.entity.id);
-                if (ent) {
-                    const fullPKs = ent.pks.concat(ent.fks.filter(f => f.isPartOfPK).map(f => f.name));
-                    fullPKs.forEach(pk => {
-                        const colName = resolveCollision(newTable.columns, pk, ent.name);
-                        newTable.columns.push({ name: colName, isPK: true, isFK: true, source: ent.name });
-                    });
-                }
+        if (aSingle || bSingle) {
+            // 1:1 or 1:N -> foreign key in one of the two tables
+            let holder, other;
+            if (aSingle && bSingle) {
+                // 1:1: prefer the side that must participate
+                const aMandatory = isMandatory(a, b);
+                const bMandatory = isMandatory(b, a);
+                [holder, other] = bMandatory && !aMandatory ? [b, a] : [a, b];
+            } else {
+                [holder, other] = aSingle ? [a, b] : [b, a];
+            }
+            const holderTable = entityTables.get(holder.entity);
+            const otherTable = entityTables.get(other.entity);
+            addForeignKey(holderTable, otherTable, otherTable.key, {
+                prefix: other.role || (recursive ? relName : ''),
+                altPrefix: relName,
+                unique: aSingle && bSingle,
+                notNull: isMandatory(holder, other),
             });
-            intermediateTables.push(newTable);
-        }
-        else if (connections.length === 2) {
-            const [c1, c2] = connections;
-            const ent1 = schemaMap.get(c1.entity.id);
-            const ent2 = schemaMap.get(c2.entity.id);
-
-            if (!ent1 || !ent2) return;
-
-            const card1 = c1.cardinality.toUpperCase();
-            const card2 = c2.cardinality.toUpperCase();
-            const isRecursive = (c1.entity.id === c2.entity.id);
-
-            // N:M -> New Table
-            if ((card1 === 'N' || card1 === 'M') && (card2 === 'N' || card2 === 'M')) {
-                const newTable = { name: relName, columns: [] };
-                relAttributes.forEach(attr => newTable.columns.push({ name: attr, isPK: false, isFK: false }));
-
-                const pks1 = ent1.pks.concat(ent1.fks.filter(f => f.isPartOfPK).map(f => f.name));
-                pks1.forEach(pk => {
-                    const colName = resolveCollision(newTable.columns, pk, ent1.name);
-                    newTable.columns.push({ name: colName, isPK: true, isFK: true, source: ent1.name });
-                });
-
-                const pks2 = ent2.pks.concat(ent2.fks.filter(f => f.isPartOfPK).map(f => f.name));
-                pks2.forEach(pk => {
-                    let colName = pk;
-                    if (isRecursive) colName = `other_${pk}`;
-                    colName = resolveCollision(newTable.columns, colName, ent2.name);
-                    newTable.columns.push({ name: colName, isPK: true, isFK: true, source: ent2.name });
-                });
-
-                intermediateTables.push(newTable);
-            }
-            // 1:N or 1:1
-            else {
-                let target, source, prefix = "";
-                
-                if ((card1 === 'N' || card1 === 'M') && (card2 === '1' || card2 === '')) {
-                    target = ent1; source = ent2; 
-                    if (isRecursive) prefix = "supervisor_";
-                } else if ((card1 === '1' || card1 === '') && (card2 === 'N' || card2 === 'M')) {
-                    target = ent2; source = ent1;
-                    if (isRecursive) prefix = "supervisor_";
-                } else {
-                    target = ent1; source = ent2;
-                    if (isRecursive) prefix = "spouse_"; 
-                }
-
-                const sourcePKs = source.pks.concat(source.fks.filter(f => f.isPartOfPK).map(f => f.name));
-                sourcePKs.forEach(pk => {
-                    const colName = prefix + pk;
-                    // Only add if not already there (prevents duplication if multiple relationships exist)
-                    if (!target.fks.some(f => f.name === colName)) {
-                        target.fks.push({ name: colName, source: source.name, isPartOfPK: false });
-                    }
-                });
-                
-                relAttributes.forEach(attr => target.attributes.push(attr));
-            }
-        }
-    });
-
-    // --- PASS 3: Render HTML ---
-    let html = "<b>Relationsmodell:</b><br><br>";
-    
-    schemaMap.forEach(table => {
-        const columns = [
-            ...table.pks.map(p => ({ name: p, isPK: true, isFK: false })),
-            ...table.attributes.map(a => ({ name: a, isPK: false, isFK: false })),
-            ...table.fks.map(f => ({ name: f.name, isPK: f.isPartOfPK, isFK: true }))
-        ];
-        html += renderTableHTML(table.name, columns);
-    });
-
-    if (intermediateTables.length > 0) {
-        html += "<br><i>Zwischentabellen / Multivalued:</i><br>";
-        intermediateTables.forEach(table => {
-            html += renderTableHTML(table.name, table.columns);
-        });
-    }
-
-    createElement('schema', { text: html, width: "500px", height: "auto" });
-    return { schemaMap, intermediateTables };
-}
-
-// --- Helpers ---
-
-function resolveCollision(existingColumns, candidateName, sourceName) {
-    const exists = existingColumns.some(c => c.name === candidateName);
-    if (exists) {
-        return `${sourceName}_${candidateName}`;
-    }
-    return candidateName;
-}
-
-function renderTableHTML(tableName, columns) {
-    let str = `<b>${tableName}</b> ( `;
-    const parts = [];
-    
-    columns.forEach(col => {
-        let val = col.name;
-        if (col.isFK) val = `<i>${val}</i>`;
-        if (col.isPK) val = `<ins>${val}</ins>`;
-        parts.push(val);
-    });
-
-    str += parts.join(", ");
-    str += " )<br>";
-    return str;
-}
-
-function getEntityData(entity) {
-    const name = entity.innerText.trim();
-    const pks = [];
-    const attributes = [];
-    const multiAttributes = [];
-
-    function traverseAttributes(el) {
-        if (el.lines) {
-            el.lines.forEach(line => {
-                const otherEl = getOtherEnd(line, el);
-                if (otherEl && otherEl.dataset.type.startsWith('attribute')) {
-                    const subAttributes = getConnectedAttributes(otherEl);
-                    if (subAttributes.length > 0) {
-                        traverseAttributes(otherEl);
-                    } else {
-                        const attrName = otherEl.innerText.trim();
-                        if (otherEl.dataset.type === 'attribute-multi') {
-                            multiAttributes.push(attrName);
-                        } else if (otherEl.dataset.type === 'attribute-derived') {
-                            // Ignore
-                        } else {
-                            if (otherEl.classList.contains('primary-key')) pks.push(attrName);
-                            else attributes.push(attrName);
-                        }
-                    }
-                }
-            });
+            attrs.forEach(attr => addColumn(holderTable, [attr.name, `${relName}_${attr.name}`], {}));
+        } else {
+            // N:M -> own table
+            const table = createTable(relName, 'relationship', 'Relationship');
+            const [prefixA, prefixB] = recursive
+                ? [a.role, b.role || relName]
+                : participantPrefixes(conns, entityTables);
+            addForeignKey(table, ta, ta.key, { asPK: true, notNull: true, prefix: prefixA, altPrefix: relName });
+            addForeignKey(table, tb, tb.key, { asPK: true, notNull: true, prefix: prefixB, altPrefix: relName });
+            attrs.forEach(attr => addColumn(table, [attr.name], {}));
+            table.key = table.columns.filter(c => c.isPK).map(c => c.name);
         }
     }
 
-    if (entity.lines) {
-        entity.lines.forEach(line => {
-            const otherEl = getOtherEnd(line, entity);
-            if (otherEl && otherEl.dataset.type.startsWith('attribute')) {
-                 const subs = getConnectedAttributes(otherEl);
-                 if (subs.length > 0) traverseAttributes(otherEl);
-                 else {
-                     const attrName = otherEl.innerText.trim();
-                     if (otherEl.dataset.type === 'attribute-multi') multiAttributes.push(attrName);
-                     else if (otherEl.dataset.type === 'attribute-derived') {} 
-                     else {
-                         if (otherEl.classList.contains('primary-key')) pks.push(attrName);
-                         else attributes.push(attrName);
-                     }
-                 }
+    // --- 6. Attributes the user marked as foreign key by hand ---
+    for (const table of tables) {
+        for (const col of table.columns) {
+            if (!col.manualFK || col.usedByFK) continue;
+            const target = guessReferencedTable(col.name, table, tables);
+            if (target) {
+                table.foreignKeys.push({ columns: [col.name], refTable: target, refColumns: [...target.key] });
+            } else {
+                sqlNotes.push(`${table.name}.${col.name} is marked as foreign key, but the referenced table could not be determined – no constraint was generated.`);
             }
-        });
+        }
     }
-    return { name, pks, attributes, multiAttributes };
+
+    return { tables, warnings, sqlNotes };
 }
 
-function getConnectedAttributes(element) {
-    const attributes = [];
-    if (element.lines) {
-        element.lines.forEach(line => {
-            const otherEl = getOtherEnd(line, element);
-            if (otherEl && otherEl.dataset.type.startsWith('attribute')) attributes.push(otherEl);
-        });
+export function renderSchemaHTML(model) {
+    const entityTables = model.tables.filter(t => t.kind === 'entity');
+    const otherTables = model.tables.filter(t => t.kind !== 'entity');
+    let html = '<b>Relationsmodell:</b><br><br>';
+    html += entityTables.map(renderTableHTML).join('');
+    if (otherTables.length) {
+        html += '<br><i>Zwischentabellen / Multivalued:</i><br>';
+        html += otherTables.map(renderTableHTML).join('');
     }
-    return attributes;
+    return html;
 }
 
-function getConnectedEntities(element) {
-    const connections = [];
-    if (element.lines) {
-        element.lines.forEach(line => {
-            const otherEl = getOtherEnd(line, element);
-            if (otherEl && otherEl.dataset.type === 'entity') {
-                let card = "";
-                if (line.dataset.startId === element.id) card = line.querySelector('.end').innerText;
-                else card = line.querySelector('.start').innerText;
-                connections.push({ entity: otherEl, cardinality: card });
+function renderTableHTML(table) {
+    const ordered = [...table.columns.filter(c => c.isPK), ...table.columns.filter(c => !c.isPK)];
+    const parts = ordered.map(col => {
+        // Primary key: underline, foreign key: overline (both: both)
+        const classes = [col.isPK && 'pk', col.isFK && 'fk'].filter(Boolean).join(' ');
+        const name = escapeHTML(col.name);
+        return classes ? `<span class="${classes}">${name}</span>` : name;
+    });
+    return `<b>${escapeHTML(table.name)}</b> ( ${parts.join(', ')} )<br>`;
+}
+
+// --- Table helpers ---
+
+function findColumn(table, name) {
+    const lower = name.toLowerCase();
+    return table.columns.find(c => c.name.toLowerCase() === lower);
+}
+
+/** Adds a column using the first candidate name that is still free. */
+function addColumn(table, candidates, props) {
+    const names = candidates.filter(Boolean);
+    let name = names.find(n => !findColumn(table, n));
+    if (!name) {
+        const base = names[0] || 'column';
+        let i = 2;
+        while (findColumn(table, `${base}_${i}`)) i++;
+        name = `${base}_${i}`;
+    }
+    const column = { name, isPK: false, isFK: false, notNull: false, ...props };
+    table.columns.push(column);
+    return column;
+}
+
+/**
+ * Adds the columns of `refKey` (the key of `ref`) to `table` as one foreign key.
+ * Existing columns are reused when the user already drew them as foreign key
+ * attributes, or (for ISA) when the subtype already has the same key column.
+ */
+function addForeignKey(table, ref, refKey, { asPK = false, notNull = false, unique = false, prefix = '', altPrefix = '', mergePK = false } = {}) {
+    if (!refKey.length) return;
+    const columns = refKey.map(refCol => {
+        const base = prefix ? `${prefix}_${refCol}` : refCol;
+        const existing = findColumn(table, base);
+        const reusable = existing && ((existing.manualFK && !existing.usedByFK) || (mergePK && existing.isPK && !existing.isFK));
+        if (reusable) {
+            existing.usedByFK = true;
+            existing.isFK = true;
+            if (asPK) existing.isPK = true;
+            if (notNull) existing.notNull = true;
+            return existing.name;
+        }
+        const candidates = [base, `${ref.name}_${refCol}`, altPrefix && `${altPrefix}_${refCol}`];
+        return addColumn(table, candidates, { isPK: asPK, isFK: true, notNull: notNull || asPK, usedByFK: true }).name;
+    });
+    table.foreignKeys.push({ columns, refTable: ref, refColumns: [...refKey] });
+    if (unique) table.uniques.push(columns);
+}
+
+/**
+ * Column prefixes for the participants of a relationship table: the role name
+ * if there is one, otherwise the entity name when its key columns would clash
+ * with another participant's (e.g. both keys are called "ID").
+ */
+function participantPrefixes(conns, entityTables) {
+    const keyNames = conns.map(c => entityTables.get(c.entity).key.map(k => (c.role ? `${c.role}_${k}` : k).toLowerCase()));
+    return conns.map((c, i) => {
+        if (c.role) return c.role;
+        const clashes = keyNames[i].some(name => keyNames.some((other, j) => j !== i && other.includes(name)));
+        return clashes ? entityTables.get(c.entity).name : '';
+    });
+}
+
+function guessReferencedTable(columnName, ownTable, tables) {
+    const candidates = tables.filter(t => t !== ownTable && t.kind === 'entity' && t.key.length === 1);
+    const lower = columnName.toLowerCase();
+
+    const sameKeyName = candidates.filter(t => t.key[0].toLowerCase() === lower);
+    if (sameKeyName.length === 1) return sameKeyName[0];
+
+    // e.g. "AbteilungID" or "Abteilung_Nr" -> table "Abteilung"
+    const normalize = s => s.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+    const col = normalize(columnName);
+    const byName = candidates
+        .filter(t => normalize(t.name) && (col.startsWith(normalize(t.name)) || col.endsWith(normalize(t.name))))
+        .sort((x, y) => normalize(y.name).length - normalize(x.name).length);
+    return byName.length ? byName[0] : null;
+}
+
+// --- Diagram helpers ---
+
+function textOf(el) {
+    return (el.querySelector('.element-text')?.innerText || '').replace(/\s+/g, ' ').trim();
+}
+
+function neighbours(el) {
+    return (el.lines || []).map(line => getOtherEnd(line, el)).filter(Boolean);
+}
+
+function isAttribute(el) {
+    return el.dataset.type?.startsWith('attribute');
+}
+
+/** Entities connected to `el`, with the cardinality written next to the entity. */
+function connectionsOf(el) {
+    return (el.lines || []).flatMap(line => {
+        const other = getOtherEnd(line, el);
+        if (!other || other.dataset.type !== 'entity') return [];
+        const cardSpan = line._start === el ? line.querySelector('.end') : line.querySelector('.start');
+        return [{
+            entity: other,
+            card: (cardSpan?.textContent || '').trim(),
+            role: (line.dataset.role || '').trim(),
+            double: line.classList.contains('double'),
+        }];
+    });
+}
+
+/**
+ * Collects the leaf attributes of an entity or relationship. Composite
+ * attributes are flattened (a PK/FK flag on the parent applies to its parts);
+ * the visited set prevents endless loops between connected attributes.
+ */
+function collectAttributes(root) {
+    const visited = new Set([root]);
+    const result = [];
+
+    const walk = (el, flags, sink) => {
+        for (const other of neighbours(el)) {
+            if (visited.has(other) || !isAttribute(other)) continue;
+            visited.add(other);
+
+            const type = other.dataset.type;
+            const own = {
+                isPK: !!flags.isPK || other.classList.contains('primary-key'),
+                isFK: !!flags.isFK || other.classList.contains('foreign-key'),
+                derived: !!flags.derived || type === 'attribute-derived',
+            };
+            const name = textOf(other) || 'Attribute';
+            const hasParts = neighbours(other).some(n => !visited.has(n) && isAttribute(n));
+
+            if (type === 'attribute-multi' && !flags.inMulti) {
+                const parts = [];
+                if (hasParts) walk(other, { ...own, inMulti: true }, parts);
+                else parts.push({ name, ...own });
+                sink.push({ name, multi: true, parts, derived: own.derived });
+            } else if (hasParts) {
+                walk(other, { ...own, inMulti: flags.inMulti }, sink);
+            } else {
+                sink.push({ name, ...own });
             }
-        });
-    }
-    return connections;
+        }
+    };
+
+    walk(root, {}, result);
+    return result;
 }
 
-function getOtherEnd(line, currentEl) {
-    const otherId = (line.dataset.startId === currentEl.id) ? line.dataset.endId : line.dataset.startId;
-    return document.getElementById(otherId);
+function flattenRelationshipAttributes(attrs, relName, warn) {
+    return attrs
+        .filter(a => !a.derived)
+        .flatMap(a => {
+            if (!a.multi) return [a];
+            warn(`Multivalued attribute "${a.name}" on relationship "${relName}" is not supported – it was treated as a normal attribute.`);
+            return a.parts;
+        });
+}
+
+// --- Cardinalities ---
+// Labels are read per line, so Chen (1/N/M), modified Chen (1/C/M/MC) and
+// (min,max) all work, whatever notation is selected for clicking through values.
+
+function isMany(card) {
+    const s = card.toUpperCase();
+    return /[NM*]/.test(s) || (/^\d+$/.test(s) && Number(s) > 1);
+}
+
+function parseMinMax(card) {
+    const match = card.match(/^\(?\s*(\d+|[*nm])\s*[,;.]+\s*(\d+|[*nm])\s*\)?$/i);
+    if (!match) return null;
+    return {
+        min: /^\d+$/.test(match[1]) ? Number(match[1]) : 0,
+        max: /^\d+$/.test(match[2]) ? Number(match[2]) : Infinity,
+    };
+}
+
+/** Can one instance of side `a` be related to at most one instance of side `b`? */
+function isSingle(a, b) {
+    const minMax = parseMinMax(a.card);
+    if (minMax) return minMax.max <= 1;  // (min,max) is written next to the entity it describes
+    return !isMany(b.card);              // Chen: the label next to b says how many b per a
+}
+
+/** Must every instance of side `a` take part in the relationship? */
+function isMandatory(a, b) {
+    if (a.double) return true; // total participation
+    const minMax = parseMinMax(a.card);
+    if (minMax) return minMax.min >= 1;
+    if (state.notation === 'mc') {
+        const s = b.card.toUpperCase();
+        return s === '1' || s === 'M' || s === 'N';
+    }
+    return false;
 }
